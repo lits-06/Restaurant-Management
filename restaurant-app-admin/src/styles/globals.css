@@ -1,0 +1,85 @@
+/* @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600&family=DM+Sans:wght@300;400;500&display=swap');
+
+:root {
+  --font-display: 'Playfair Display', serif;
+  --font-body: 'DM Sans', sans-serif;
+
+  --color-bg: #FAFAF7;
+  --color-surface: #FFFFFF;
+  --color-surface-2: #F5F4EF;
+  --color-border: #E8E6DF;
+  --color-border-strong: #D4D0C4;
+
+  --color-text-primary: #1A1915;
+  --color-text-secondary: #6B6860;
+  --color-text-muted: #A09D95;
+
+  --color-accent: #C8622A;
+  --color-accent-hover: #B55522;
+  --color-accent-light: #F7EDE6;
+
+  --color-success: #2D7A4F;
+  --color-success-bg: #EAF5EE;
+  --color-warning: #92620A;
+  --color-warning-bg: #FEF6E4;
+  --color-danger: #A83232;
+  --color-danger-bg: #FDEAEA;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
+
+  --shadow-sm: 0 1px 3px rgba(26,25,21,0.06);
+  --shadow-md: 0 4px 12px rgba(26,25,21,0.08);
+  --shadow-lg: 0 8px 24px rgba(26,25,21,0.10);
+
+  --transition: 0.18s ease;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: var(--font-body);
+  background: var(--color-bg);
+  color: var(--color-text-primary);
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: inherit; text-decoration: none; }
+button { font-family: var(--font-body); cursor: pointer; border: none; background: none; }
+input, select, textarea { font-family: var(--font-body); }
+img { display: block; max-width: 100%; } */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  min-height: 100vh;
+}
+
+body {
+  font-family: Inter, Arial, sans-serif;
+  background-color: #ffffff;
+  color: #111827;
+}
+
+a {
+  text-decoration: none;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}

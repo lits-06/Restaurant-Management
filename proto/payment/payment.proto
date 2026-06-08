@@ -1,0 +1,129 @@
+syntax = "proto3";
+
+package payment;
+
+option go_package = "restaurant-management/proto/payment";
+
+import "google/protobuf/timestamp.proto";
+
+// Payment Service Definition
+service PaymentService {
+  rpc CreatePayment(CreatePaymentRequest) returns (CreatePaymentResponse);
+  rpc GetPayment(GetPaymentRequest) returns (GetPaymentResponse);
+  rpc ProcessPayment(ProcessPaymentRequest) returns (ProcessPaymentResponse);
+  rpc RefundPayment(RefundPaymentRequest) returns (RefundPaymentResponse);
+  rpc ListPayments(ListPaymentsRequest) returns (ListPaymentsResponse);
+  rpc GetPaymentsByOrder(GetPaymentsByOrderRequest) returns (GetPaymentsByOrderResponse);
+}
+
+// Enums
+enum PaymentMethod {
+  METHOD_UNKNOWN = 0;
+  METHOD_CASH = 1;
+  METHOD_CREDIT_CARD = 2;
+  METHOD_DEBIT_CARD = 3;
+  METHOD_MOBILE_WALLET = 4;
+  METHOD_BANK_TRANSFER = 5;
+}
+
+enum PaymentStatus {
+  STATUS_UNKNOWN = 0;
+  STATUS_PENDING = 1;
+  STATUS_PROCESSING = 2;
+  STATUS_COMPLETED = 3;
+  STATUS_FAILED = 4;
+  STATUS_REFUNDED = 5;
+  STATUS_PARTIALLY_REFUNDED = 6;
+}
+
+// Messages
+message Payment {
+  string payment_id = 1;
+  string order_id = 2;
+  double amount = 3;
+  double tip = 4;
+  double total = 5;
+  PaymentMethod method = 6;
+  PaymentStatus status = 7;
+  string transaction_id = 8;
+  string customer_name = 9;
+  string notes = 10;
+  google.protobuf.Timestamp created_at = 11;
+  google.protobuf.Timestamp updated_at = 12;
+}
+
+message CreatePaymentRequest {
+  string order_id = 1;
+  double amount = 2;
+  double tip = 3;
+  PaymentMethod method = 4;
+  string customer_name = 5;
+  string notes = 6;
+}
+
+message CreatePaymentResponse {
+  Payment payment = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+message GetPaymentRequest {
+  string payment_id = 1;
+}
+
+message GetPaymentResponse {
+  Payment payment = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+message ProcessPaymentRequest {
+  string payment_id = 1;
+  string transaction_id = 2;
+}
+
+message ProcessPaymentResponse {
+  Payment payment = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+message RefundPaymentRequest {
+  string payment_id = 1;
+  double amount = 2;
+  string reason = 3;
+}
+
+message RefundPaymentResponse {
+  Payment payment = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+message ListPaymentsRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  PaymentStatus status = 3;
+  PaymentMethod method = 4;
+  google.protobuf.Timestamp from_date = 5;
+  google.protobuf.Timestamp to_date = 6;
+}
+
+message ListPaymentsResponse {
+  repeated Payment payments = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+  bool success = 5;
+  string message = 6;
+}
+
+message GetPaymentsByOrderRequest {
+  string order_id = 1;
+}
+
+message GetPaymentsByOrderResponse {
+  repeated Payment payments = 1;
+  bool success = 2;
+  string message = 3;
+}

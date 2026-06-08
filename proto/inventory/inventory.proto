@@ -1,0 +1,217 @@
+syntax = "proto3";
+
+package inventory;
+
+option go_package = "restaurant-management/proto/inventory";
+
+import "google/protobuf/timestamp.proto";
+
+// Inventory Service Definition
+service InventoryService {
+  rpc CreateIngredient(CreateIngredientRequest) returns (CreateIngredientResponse);
+  rpc GetIngredient(GetIngredientRequest) returns (GetIngredientResponse);
+  rpc UpdateIngredient(UpdateIngredientRequest) returns (UpdateIngredientResponse);
+  rpc DeleteIngredient(DeleteIngredientRequest) returns (DeleteIngredientResponse);
+  rpc ListIngredients(ListIngredientsRequest) returns (ListIngredientsResponse);
+  
+  rpc AddStock(AddStockRequest) returns (AddStockResponse);
+  rpc ReduceStock(ReduceStockRequest) returns (ReduceStockResponse);
+  rpc GetStockLevel(GetStockLevelRequest) returns (GetStockLevelResponse);
+  rpc GetLowStockItems(GetLowStockItemsRequest) returns (GetLowStockItemsResponse);
+  
+  rpc RecordStockMovement(RecordStockMovementRequest) returns (RecordStockMovementResponse);
+  rpc GetStockHistory(GetStockHistoryRequest) returns (GetStockHistoryResponse);
+}
+
+// Enums
+enum Unit {
+  UNIT_UNKNOWN = 0;
+  UNIT_KG = 1;
+  UNIT_GRAM = 2;
+  UNIT_LITER = 3;
+  UNIT_ML = 4;
+  UNIT_PIECE = 5;
+}
+
+enum MovementType {
+  MOVEMENT_UNKNOWN = 0;
+  MOVEMENT_PURCHASE = 1;
+  MOVEMENT_USAGE = 2;
+  MOVEMENT_WASTE = 3;
+  MOVEMENT_ADJUSTMENT = 4;
+  MOVEMENT_RETURN = 5;
+}
+
+// Messages
+message Ingredient {
+  string ingredient_id = 1;
+  string name = 2;
+  string description = 3;
+  Unit unit = 4;
+  double current_stock = 5;
+  double minimum_stock = 6;
+  double unit_cost = 7;
+  string supplier = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp updated_at = 10;
+}
+
+message StockMovement {
+  string movement_id = 1;
+  string ingredient_id = 2;
+  string ingredient_name = 3;
+  MovementType type = 4;
+  double quantity = 5;
+  double previous_stock = 6;
+  double new_stock = 7;
+  string reference_id = 8;
+  string notes = 9;
+  string performed_by = 10;
+  google.protobuf.Timestamp created_at = 11;
+}
+
+message CreateIngredientRequest {
+  string name = 1;
+  string description = 2;
+  Unit unit = 3;
+  double current_stock = 4;
+  double minimum_stock = 5;
+  double unit_cost = 6;
+  string supplier = 7;
+}
+
+message CreateIngredientResponse {
+  Ingredient ingredient = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+message GetIngredientRequest {
+  string ingredient_id = 1;
+}
+
+message GetIngredientResponse {
+  Ingredient ingredient = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+message UpdateIngredientRequest {
+  string ingredient_id = 1;
+  string name = 2;
+  string description = 3;
+  Unit unit = 4;
+  double minimum_stock = 5;
+  double unit_cost = 6;
+  string supplier = 7;
+}
+
+message UpdateIngredientResponse {
+  Ingredient ingredient = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+message DeleteIngredientRequest {
+  string ingredient_id = 1;
+}
+
+message DeleteIngredientResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message ListIngredientsRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  bool low_stock_only = 3;
+}
+
+message ListIngredientsResponse {
+  repeated Ingredient ingredients = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+  bool success = 5;
+  string message = 6;
+}
+
+message AddStockRequest {
+  string ingredient_id = 1;
+  double quantity = 2;
+  string reference_id = 3;
+  string notes = 4;
+  string performed_by = 5;
+}
+
+message AddStockResponse {
+  Ingredient ingredient = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+message ReduceStockRequest {
+  string ingredient_id = 1;
+  double quantity = 2;
+  string reference_id = 3;
+  string notes = 4;
+  string performed_by = 5;
+}
+
+message ReduceStockResponse {
+  Ingredient ingredient = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+message GetStockLevelRequest {
+  string ingredient_id = 1;
+}
+
+message GetStockLevelResponse {
+  double current_stock = 1;
+  double minimum_stock = 2;
+  bool is_low_stock = 3;
+  bool success = 4;
+  string message = 5;
+}
+
+message GetLowStockItemsRequest {
+  // No parameters needed
+}
+
+message GetLowStockItemsResponse {
+  repeated Ingredient ingredients = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+message RecordStockMovementRequest {
+  string ingredient_id = 1;
+  MovementType type = 2;
+  double quantity = 3;
+  string reference_id = 4;
+  string notes = 5;
+  string performed_by = 6;
+}
+
+message RecordStockMovementResponse {
+  StockMovement movement = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+message GetStockHistoryRequest {
+  string ingredient_id = 1;
+  int32 page = 2;
+  int32 page_size = 3;
+  google.protobuf.Timestamp from_date = 4;
+  google.protobuf.Timestamp to_date = 5;
+}
+
+message GetStockHistoryResponse {
+  repeated StockMovement movements = 1;
+  int32 total = 2;
+  bool success = 3;
+  string message = 4;
+}

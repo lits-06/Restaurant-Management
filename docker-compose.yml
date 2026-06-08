@@ -1,0 +1,156 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: restaurant-postgres
+    environment:
+      POSTGRES_USER: restaurant_user
+      POSTGRES_PASSWORD: restaurant_pass
+      POSTGRES_DB: restaurant_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: restaurant-redis
+    ports:
+      - "6379:6379"
+
+  auth-service:
+    image: alpine:latest
+    container_name: auth-service
+    working_dir: /app/auth-service
+    command: ["sh", "-c", "chmod +x ./server && ./server"]
+    environment:
+      - DATABASE_HOST=postgres
+      - DATABASE_PORT=5432
+      - DATABASE_USER=restaurant_user
+      - DATABASE_PASSWORD=restaurant_pass
+      - DATABASE_NAME=restaurant_db
+      - DATABASE_SSLMODE=disable
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    ports:
+      - "50051:50051"
+    volumes:
+      - ./services/auth-service:/app/auth-service
+    depends_on:
+      - postgres
+      - redis
+
+  menu-service:
+    image: alpine:latest
+    container_name: menu-service
+    working_dir: /app/menu-service
+    command: ["sh", "-c", "chmod +x ./server && ./server"]
+    environment:
+      - GRPC_PORT=50054
+      - DATABASE_HOST=postgres
+      - DATABASE_PORT=5432
+      - DATABASE_USER=restaurant_user
+      - DATABASE_PASSWORD=restaurant_pass
+      - DATABASE_NAME=restaurant_db
+      - DATABASE_SSLMODE=disable
+    ports:
+      - "50054:50054"
+    volumes:
+      - ./services/menu-service:/app/menu-service
+    depends_on:
+      - postgres
+
+  staff-service:
+    image: alpine:latest
+    container_name: staff-service
+    working_dir: /app/staff-service
+    command: ["sh", "-c", "chmod +x ./server && ./server"]
+    environment:
+      - GRPC_PORT=50052
+      - DATABASE_HOST=postgres
+      - DATABASE_PORT=5432
+      - DATABASE_USER=restaurant_user
+      - DATABASE_PASSWORD=restaurant_pass
+      - DATABASE_NAME=restaurant_db
+      - DATABASE_SSLMODE=disable
+    ports:
+      - "50052:50052"
+    volumes:
+      - ./services/staff-service:/app/staff-service
+    depends_on:
+      - postgres
+
+  # table-service:
+  #   image: alpine:latest
+  #   container_name: table-service
+  #   working_dir: /app/table-service
+  #   command: ["sh", "-c", "chmod +x ./server && ./server"]
+  #   environment:
+  #     - SERVER_PORT=50053
+  #     - DATABASE_HOST=postgres
+  #     - DATABASE_PORT=5432
+  #     - DATABASE_USER=restaurant_user
+  #     - DATABASE_PASSWORD=restaurant_pass
+  #     - DATABASE_NAME=restaurant_db
+  #     - DATABASE_SSLMODE=disable
+  #   ports:
+  #     - "50053:50053"
+  #   volumes:
+  #     - ./services/table-service:/app/table-service
+  #   depends_on:
+  #     - postgres
+
+  order-service:
+    image: alpine:latest
+    container_name: order-service
+    working_dir: /app/order-service
+    command: ["sh", "-c", "chmod +x ./server && ./server"]
+    environment:
+      - GRPC_PORT=50055
+      - DATABASE_HOST=postgres
+      - DATABASE_PORT=5432
+      - DATABASE_USER=restaurant_user
+      - DATABASE_PASSWORD=restaurant_pass
+      - DATABASE_NAME=restaurant_db
+      - DATABASE_SSLMODE=disable
+      - MENU_SERVICE_ADDR=menu-service:50054
+      - LOG_LEVEL=info
+    ports:
+      - "50055:50055"
+    volumes:
+      - ./services/order-service:/app/order-service
+    depends_on:
+      - postgres
+
+  api-gateway:
+    image: alpine:latest
+    # build:
+    #   context: .
+    #   dockerfile: api-gateway/Dockerfile
+    container_name: api-gateway
+    working_dir: /app/api-gateway
+    command: ["sh", "-c", "chmod +x ./server && ./server"]
+    environment:
+      - SERVER_PORT=8080
+      - AUTH_SERVICE_HOST=auth-service
+      - AUTH_SERVICE_PORT=50051
+      # - TABLE_SERVICE_HOST=table-service
+      # - TABLE_SERVICE_PORT=50053
+      - STAFF_SERVICE_HOST=staff-service
+      - STAFF_SERVICE_PORT=50052
+      - MENU_SERVICE_HOST=menu-service
+      - MENU_SERVICE_PORT=50054
+      - ORDER_SERVICE_HOST=order-service
+      - ORDER_SERVICE_PORT=50055
+      - ENVIRONMENT=development
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./api-gateway:/app/api-gateway
+    depends_on:
+      - auth-service
+      # - table-service
+      - menu-service
+      - order-service
+
+volumes:
+  postgres_data:

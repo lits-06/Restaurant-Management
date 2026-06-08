@@ -1,0 +1,82 @@
+syntax = "proto3";
+
+package staff;
+
+option go_package = "restaurant-management/proto/staff";
+
+service StaffService {
+  rpc CreateStaff(CreateStaffRequest) returns (CreateStaffResponse);
+  rpc GetStaff(GetStaffRequest) returns (GetStaffResponse);
+  rpc UpdateStaff(UpdateStaffRequest) returns (UpdateStaffResponse);
+  rpc DeleteStaff(DeleteStaffRequest) returns (DeleteStaffResponse);
+  rpc ListStaff(ListStaffRequest) returns (ListStaffResponse);
+}
+
+message Staff {
+  string staff_id = 1;
+  string name = 2;
+  string role = 3;
+  string contact = 4;
+  string avatar = 5;
+}
+
+message CreateStaffRequest {
+  string name = 1;
+  string role = 2;
+  string contact = 3;
+  string avatar = 4;
+}
+
+message CreateStaffResponse {
+  Staff staff = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+message GetStaffRequest {
+  string staff_id = 1;
+}
+
+message GetStaffResponse {
+  Staff staff = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+message UpdateStaffRequest {
+  string staff_id = 1;
+  string name = 2;
+  string role = 3;
+  string contact = 4;
+  string avatar = 5;
+}
+
+message UpdateStaffResponse {
+  Staff staff = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+message DeleteStaffRequest {
+  string staff_id = 1;
+}
+
+message DeleteStaffResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message ListStaffRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  string keyword = 3;
+}
+
+message ListStaffResponse {
+  repeated Staff staff = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+  bool success = 5;
+  string message = 6;
+}

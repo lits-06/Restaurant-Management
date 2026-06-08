@@ -1,0 +1,155 @@
+syntax = "proto3";
+
+package menu;
+
+option go_package = "restaurant-management/proto/menu";
+
+// Menu Service Definition
+service MenuService {
+  rpc CreateMenuItem(CreateMenuItemRequest) returns (CreateMenuItemResponse);
+  rpc GetMenuItem(GetMenuItemRequest) returns (GetMenuItemResponse);
+  rpc UpdateMenuItem(UpdateMenuItemRequest) returns (UpdateMenuItemResponse);
+  rpc DeleteMenuItem(DeleteMenuItemRequest) returns (DeleteMenuItemResponse);
+  rpc ListMenuItems(ListMenuItemsRequest) returns (ListMenuItemsResponse);
+  
+  rpc CreateCategory(CreateCategoryRequest) returns (CreateCategoryResponse);
+  rpc GetCategory(GetCategoryRequest) returns (GetCategoryResponse);
+  rpc UpdateCategory(UpdateCategoryRequest) returns (UpdateCategoryResponse);
+  rpc DeleteCategory(DeleteCategoryRequest) returns (DeleteCategoryResponse);
+  rpc ListCategories(ListCategoriesRequest) returns (ListCategoriesResponse);
+}
+
+// Messages
+message MenuItem {
+  string item_id = 1;
+  string name = 2;
+  string description = 3;
+  double price = 4;
+  string category = 5;
+  string image_url = 6;
+}
+
+message Category {
+  string category_id = 1;
+  string name = 2;
+}
+
+message CreateMenuItemRequest {
+  string name = 1;
+  string description = 2;
+  double price = 3;
+  string category = 4;
+  string image_url = 5;
+}
+
+message CreateMenuItemResponse {
+  MenuItem item = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+message GetMenuItemRequest {
+  string item_id = 1;
+}
+
+message GetMenuItemResponse {
+  MenuItem item = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+message UpdateMenuItemRequest {
+  string item_id = 1;
+  string name = 2;
+  string description = 3;
+  double price = 4;
+  string category_id = 5;
+  string image_url = 6;
+}
+
+message UpdateMenuItemResponse {
+  MenuItem item = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+message DeleteMenuItemRequest {
+  string item_id = 1;
+}
+
+message DeleteMenuItemResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message ListMenuItemsRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  string category_id = 3;
+  string keyword = 4;
+}
+
+message ListMenuItemsResponse {
+  repeated MenuItem items = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+  bool success = 5;
+  string message = 6;
+}
+
+message CreateCategoryRequest {
+  string name = 1;
+  string description = 2;
+  int32 display_order = 3;
+}
+
+message CreateCategoryResponse {
+  Category category = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+message GetCategoryRequest {
+  string category_id = 1;
+}
+
+message GetCategoryResponse {
+  Category category = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+message UpdateCategoryRequest {
+  string category_id = 1;
+  string name = 2;
+  string description = 3;
+  int32 display_order = 4;
+}
+
+message UpdateCategoryResponse {
+  Category category = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+message DeleteCategoryRequest {
+  string category_id = 1;
+}
+
+message DeleteCategoryResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message ListCategoriesRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+}
+
+message ListCategoriesResponse {
+  repeated Category categories = 1;
+  int32 total = 2;
+  bool success = 3;
+  string message = 4;
+}

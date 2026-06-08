@@ -1,0 +1,204 @@
+syntax = "proto3";
+
+package report;
+
+option go_package = "restaurant-management/proto/report";
+
+import "google/protobuf/timestamp.proto";
+
+// Report Service Definition
+service ReportService {
+  rpc GetSalesReport(GetSalesReportRequest) returns (GetSalesReportResponse);
+  rpc GetInventoryReport(GetInventoryReportRequest) returns (GetInventoryReportResponse);
+  rpc GetOrderReport(GetOrderReportRequest) returns (GetOrderReportResponse);
+  rpc GetStaffPerformanceReport(GetStaffPerformanceReportRequest) returns (GetStaffPerformanceReportResponse);
+  rpc GetPopularItemsReport(GetPopularItemsReportRequest) returns (GetPopularItemsReportResponse);
+  rpc GetRevenueAnalytics(GetRevenueAnalyticsRequest) returns (GetRevenueAnalyticsResponse);
+  rpc ExportReport(ExportReportRequest) returns (ExportReportResponse);
+}
+
+// Enums
+enum ReportPeriod {
+  PERIOD_UNKNOWN = 0;
+  PERIOD_DAILY = 1;
+  PERIOD_WEEKLY = 2;
+  PERIOD_MONTHLY = 3;
+  PERIOD_YEARLY = 4;
+  PERIOD_CUSTOM = 5;
+}
+
+enum ExportFormat {
+  FORMAT_UNKNOWN = 0;
+  FORMAT_PDF = 1;
+  FORMAT_EXCEL = 2;
+  FORMAT_CSV = 3;
+  FORMAT_JSON = 4;
+}
+
+// Messages
+message SalesReport {
+  double total_sales = 1;
+  double total_tax = 2;
+  double total_discount = 3;
+  double net_revenue = 4;
+  int32 total_orders = 5;
+  double average_order_value = 6;
+  repeated DailySales daily_breakdown = 7;
+  repeated PaymentMethodSales payment_breakdown = 8;
+}
+
+message DailySales {
+  string date = 1;
+  double sales = 2;
+  int32 orders = 3;
+}
+
+message PaymentMethodSales {
+  string method = 1;
+  double amount = 2;
+  int32 count = 3;
+}
+
+message InventoryReport {
+  double total_inventory_value = 1;
+  int32 low_stock_items_count = 2;
+  repeated IngredientStock items = 3;
+  double total_waste_value = 4;
+}
+
+message IngredientStock {
+  string ingredient_id = 1;
+  string name = 2;
+  double current_stock = 3;
+  double minimum_stock = 4;
+  double unit_cost = 5;
+  double total_value = 6;
+  bool is_low_stock = 7;
+}
+
+message OrderReport {
+  int32 total_orders = 1;
+  int32 completed_orders = 2;
+  int32 cancelled_orders = 3;
+  double completion_rate = 4;
+  double average_preparation_time = 5;
+  repeated HourlyOrders hourly_breakdown = 6;
+}
+
+message HourlyOrders {
+  int32 hour = 1;
+  int32 order_count = 2;
+}
+
+message StaffPerformance {
+  string staff_id = 1;
+  string staff_name = 2;
+  int32 orders_handled = 3;
+  double total_sales = 4;
+  double average_order_value = 5;
+  int32 customer_complaints = 6;
+}
+
+message PopularItem {
+  string item_id = 1;
+  string item_name = 2;
+  int32 quantity_sold = 3;
+  double revenue = 4;
+  string category = 5;
+}
+
+message RevenueAnalytics {
+  double total_revenue = 1;
+  double growth_rate = 2;
+  repeated DailySales trend_data = 3;
+  string peak_day = 4;
+  string peak_hour = 5;
+}
+
+message GetSalesReportRequest {
+  ReportPeriod period = 1;
+  google.protobuf.Timestamp from_date = 2;
+  google.protobuf.Timestamp to_date = 3;
+}
+
+message GetSalesReportResponse {
+  SalesReport report = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+message GetInventoryReportRequest {
+  google.protobuf.Timestamp as_of_date = 1;
+}
+
+message GetInventoryReportResponse {
+  InventoryReport report = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+message GetOrderReportRequest {
+  ReportPeriod period = 1;
+  google.protobuf.Timestamp from_date = 2;
+  google.protobuf.Timestamp to_date = 3;
+}
+
+message GetOrderReportResponse {
+  OrderReport report = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+message GetStaffPerformanceReportRequest {
+  ReportPeriod period = 1;
+  google.protobuf.Timestamp from_date = 2;
+  google.protobuf.Timestamp to_date = 3;
+  string staff_id = 4;
+}
+
+message GetStaffPerformanceReportResponse {
+  repeated StaffPerformance performances = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+message GetPopularItemsReportRequest {
+  ReportPeriod period = 1;
+  google.protobuf.Timestamp from_date = 2;
+  google.protobuf.Timestamp to_date = 3;
+  int32 top_n = 4;
+}
+
+message GetPopularItemsReportResponse {
+  repeated PopularItem items = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+message GetRevenueAnalyticsRequest {
+  ReportPeriod period = 1;
+  google.protobuf.Timestamp from_date = 2;
+  google.protobuf.Timestamp to_date = 3;
+}
+
+message GetRevenueAnalyticsResponse {
+  RevenueAnalytics analytics = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+message ExportReportRequest {
+  string report_type = 1;
+  ExportFormat format = 2;
+  ReportPeriod period = 3;
+  google.protobuf.Timestamp from_date = 4;
+  google.protobuf.Timestamp to_date = 5;
+}
+
+message ExportReportResponse {
+  bytes file_data = 1;
+  string file_name = 2;
+  string content_type = 3;
+  bool success = 4;
+  string message = 5;
+}

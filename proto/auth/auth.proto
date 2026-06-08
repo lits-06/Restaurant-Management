@@ -1,0 +1,94 @@
+syntax = "proto3";
+
+package auth;
+
+option go_package = "restaurant-management/proto/auth";
+
+import "google/protobuf/timestamp.proto";
+
+// Auth Service Definition
+service AuthService {
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+  rpc Login(LoginRequest) returns (LoginResponse);
+  rpc RefreshToken(RefreshTokenRequest) returns (RefreshTokenResponse);
+  rpc VerifyToken(VerifyTokenRequest) returns (VerifyTokenResponse);
+  rpc Logout(LogoutRequest) returns (LogoutResponse);
+  rpc ChangePassword(ChangePasswordRequest) returns (ChangePasswordResponse);
+}
+
+// Messages
+message RegisterRequest {
+  string email = 1;
+  string password = 2;
+  string username = 3;
+  string full_name = 4;
+  string phone = 5;
+}
+
+message RegisterResponse {
+  string user_id = 1;
+  string message = 2;
+  bool success = 3;
+}
+
+message LoginRequest {
+  string email = 1;
+  string password = 2;
+}
+
+message LoginResponse {
+  string access_token = 1;
+  string refresh_token = 2;
+  string user_id = 3;
+  bool success = 4;
+  string message = 5;
+}
+
+message RefreshTokenRequest {
+  string refresh_token = 1;
+}
+
+message RefreshTokenResponse {
+  string access_token = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+message VerifyTokenRequest {
+  string access_token = 1;
+}
+
+message VerifyTokenResponse {
+  bool valid = 1;
+  string user_id = 2;
+  string email = 3;
+  google.protobuf.Timestamp expires_at = 4;
+}
+
+message LogoutRequest {
+  string user_id = 1;
+  string access_token = 2;
+}
+
+message LogoutResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message ChangePasswordRequest {
+  string user_id = 1;
+  string old_password = 2;
+  string new_password = 3;
+}
+
+message ChangePasswordResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message UserInfo {
+  string user_id = 1;
+  string email = 2;
+  string username = 3;
+  string full_name = 4;
+}
