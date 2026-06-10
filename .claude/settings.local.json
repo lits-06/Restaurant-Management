@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(protoc --version)",
-      "Bash(go version *)",
-      "Bash(go env *)"
-    ]
-  }
-}
