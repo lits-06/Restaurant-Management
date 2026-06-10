@@ -12,10 +12,11 @@ Full-stack restaurant management system built with microservices architecture. B
 Restaurant_Management/
 ├── restaurant-app/          # Customer-facing React + Vite SPA (port 5173)
 ├── restaurant-app-admin/    # Admin dashboard React + Vite SPA (port 5174)
+├── restaurant-app-kitchen/  # Kitchen display React + Vite SPA (port 5175) — CHEF + WAITER
 ├── api-gateway/             # HTTP → gRPC translation layer (port 8080)
 ├── services/                # Go microservices (gRPC)
 │   ├── auth-service/        # port 50051
-│   ├── staff-service/       # port 50052
+│   ├── schedule-service/    # port 50052
 │   ├── table-service/       # port 50053
 │   ├── menu-service/        # port 50054
 │   ├── order-service/       # port 50055
@@ -35,24 +36,31 @@ Restaurant_Management/
 
 ## Tech Stack
 
-### Frontend (both apps)
+### Frontend — restaurant-app & restaurant-app-admin
 - **React 19** + **Vite 8** + **TypeScript**
 - **TailwindCSS** — styling
 - **Zustand** — state management
 - **@tanstack/react-query** — server state / data fetching
 - **react-router-dom v7** — routing
 - **react-hook-form + zod** — form validation
-- **socket.io-client** — real-time updates
 - **axios** — HTTP client
 - **@radix-ui/react-*** — accessible UI primitives
 - **lucide-react** — icons
+
+### Frontend — restaurant-app-kitchen
+- **React 19** + **Vite 8** + **TypeScript**
+- **TailwindCSS** — styling
+- **Zustand** — state management (persist key: `kitchen-auth`)
+- **Native WebSocket API** — real-time notifications (không dùng socket.io)
+- **lucide-react** — icons
+- No react-router — state-based routing (`useState` cho view switching)
 
 ### Backend (all services)
 - **Go 1.25+** — each service has its **own `go.mod`** (module path: `restaurant-management/services/<name>-service`)
 - **gRPC** (`google.golang.org/grpc v1.80`)
 - **Protocol Buffers v3**
 - **PostgreSQL 15** — primary database (single shared `restaurant_db`)
-- **Redis 7** — token/session cache (auth-service only)
+- **Redis 7** — token/session cache (auth-service) + Pub/Sub message bus (notification-service)
 - **go.uber.org/zap** — structured logging
 - **github.com/golang-jwt/jwt/v5** — JWT auth
 - **github.com/spf13/viper** — config management
@@ -66,9 +74,10 @@ Restaurant_Management/
 |----------------------|-----------|-------|
 | customer frontend    | HTTP      | 5173  |
 | admin frontend       | HTTP      | 5174  |
+| kitchen display      | HTTP      | 5175  |
 | api-gateway          | HTTP/REST | 8080  |
 | auth-service         | gRPC      | 50051 |
-| staff-service        | gRPC      | 50052 |
+| schedule-service     | gRPC      | 50052 |
 | table-service        | gRPC      | 50053 |
 | menu-service         | gRPC      | 50054 |
 | order-service        | gRPC      | 50055 |
@@ -101,7 +110,7 @@ go run cmd/server/main.go
 
 ### Full Stack (Docker)
 ```bash
-docker-compose up          # starts postgres, redis, auth, menu, staff, table, order, user, api-gateway
+docker-compose up          # starts postgres, redis, auth, menu, staff, table, order, notification, user, api-gateway
 docker-compose up --build  # rebuild images
 docker-compose down
 ```
@@ -128,7 +137,7 @@ bash scripts/generate-proto.sh
 
 Translates HTTP REST → gRPC. Uses Go's standard `net/http` mux (no framework).
 
-**CORS allowed origins:** `http://localhost:5173`, `http://localhost:5174`
+**CORS allowed origins (HTTP + WebSocket):** `http://localhost:5173`, `http://localhost:5174`, `http://localhost:5175`
 
 **Environment Variables:**
 ```
@@ -138,7 +147,8 @@ MENU_SERVICE_HOST=localhost   MENU_SERVICE_PORT=50054
 ORDER_SERVICE_HOST=localhost  ORDER_SERVICE_PORT=50055
 STAFF_SERVICE_HOST=localhost  STAFF_SERVICE_PORT=50052
 TABLE_SERVICE_HOST=localhost  TABLE_SERVICE_PORT=50053
-USER_SERVICE_HOST=localhost   USER_SERVICE_PORT=50056
+USER_SERVICE_HOST=localhost        USER_SERVICE_PORT=50056
+NOTIFICATION_SERVICE_HOST=localhost NOTIFICATION_SERVICE_PORT=50058
 ENVIRONMENT=development
 ```
 
@@ -173,6 +183,7 @@ POST   /orders/{id}/cancel
 PATCH  /orders/{id}/status
 POST   /orders/{id}/items
 DELETE /orders/{id}/items/{itemId}
+PATCH  /orders/{id}/items/{itemId}/status
 
 GET    /staff
 POST   /staff
@@ -199,6 +210,8 @@ PATCH  /users/{id}/roles
 PATCH  /users/{id}/password
 
 GET    /health
+
+GET    /ws/notifications?token=<jwt>&role=<CHEF|WAITER>   (WebSocket upgrade)
 ```
 
 ---
@@ -253,10 +266,12 @@ services/<name>-service/
 ### Order Service (`services/order-service`, port 50055)
 **Proto:** `proto/order/order.proto`
 
-- 9 RPCs: CreateOrder, GetOrder, UpdateOrder, DeleteOrder, CancelOrder, ListOrders, UpdateOrderStatus, AddOrderItem, RemoveOrderItem
-- **4 statuses:** `Pending → Confirmed → Completed` (or `Cancelled` from Pending/Confirmed)
+- **10 RPCs:** CreateOrder, GetOrder, UpdateOrder, DeleteOrder, CancelOrder, ListOrders, UpdateOrderStatus, AddOrderItem, RemoveOrderItem, **UpdateOrderItemStatus**
+- **4 order statuses:** `Pending → Confirmed → Completed` (or `Cancelled` from Pending/Confirmed)
+- **4 item statuses:** `PENDING → COOKING → READY → SERVED` (enforced state machine, role-gated)
 - Validates menu items via menu-service gRPC (price lookup)
 - **Auto-assigns table** when `table_id` is omitted in CreateOrder (calls table-service `GetAvailableTables` + checks own DB for time conflicts)
+- **Notifies kitchen staff** via notification-service when order → Confirmed (CHEF) or item → READY (WAITER)
 
 **`Order` entity fields:**
 | Field | Type | Notes |
@@ -272,9 +287,11 @@ services/<name>-service/
 | `party_size` | int32 | Number of guests |
 | `status` | string | Pending/Confirmed/Completed/Cancelled |
 | `total` | float64 | Sum of item prices |
-| `items` | OrderItem[] | Menu items + quantity |
+| `items` | OrderItem[] | Menu items + quantity + `item_status` |
 
-**DB tables:** `orders`, `order_items` (FK → `menu_items`)
+**`OrderItem` fields:** `item_id`, `name`, `price`, `category`, `image_url`, `quantity`, `item_status` (PENDING/COOKING/READY/SERVED)
+
+**DB tables:** `orders`, `order_items` (FK → `menu_items`, includes `item_status VARCHAR(16) NOT NULL DEFAULT 'PENDING'`)
 
 **Auto-assign logic** (`usecase/order_usecase.go → autoAssignTable`):
 1. Call `table-service.GetAvailableTables(min_capacity=party_size)` — tables sorted by capacity ASC
@@ -282,7 +299,18 @@ services/<name>-service/
 3. Pick first candidate not in the occupied set (best-fit)
 4. Returns `ErrNoTableAvailable` if all candidates are booked
 
-**Env:** `TABLE_SERVICE_ADDR=table-service:50053` — if empty, auto-assign is disabled and `table_id` is required.
+**Kitchen flow:**
+```
+Staff confirm order → UpdateOrderStatus(Confirmed) → 🔔 CHEF notified (ORDER_CONFIRMED)
+CHEF → UpdateOrderItemStatus(COOKING) → UpdateOrderItemStatus(READY) → 🔔 WAITER notified (ITEM_READY)
+WAITER → UpdateOrderItemStatus(SERVED)
+Manager → UpdateOrderStatus(Completed) when customer pays (manual)
+```
+
+**Env:**
+- `TABLE_SERVICE_ADDR=table-service:50053` — empty = auto-assign disabled, `table_id` required
+- `NOTIFICATION_SERVICE_ADDR=notification-service:50058` — empty = notifications silently skipped
+- `MENU_SERVICE_ADDR=menu-service:50054`
 
 **CreateOrder request** (HTTP JSON):
 ```json
@@ -305,7 +333,40 @@ services/<name>-service/
 - `GetOrder`, `UpdateOrder`, `DeleteOrder`, `CancelOrder`, `AddOrderItem`, `RemoveOrderItem`: pre-fetches order; if `order.user_id != ""`, caller must be authenticated as owner OR have staff role
 - `ListOrders`: if `user_id` query param present, caller must be that user or staff; no filter = open
 - `UpdateOrderStatus`: staff-only (ADMIN/MANAGER/CHEF/WAITER)
-- Shared helpers: `verifyCaller(r)` (optional token extract), `checkOrderAccess(r, orderUserID)` (combined auth+authz), `checkUserIDAccess(r, targetUserID)` (for list filter)
+- `UpdateOrderItemStatus`: role-gated by target status — `COOKING`/`READY` → CHEF+ADMIN+MANAGER; `SERVED` → WAITER+ADMIN+MANAGER
+- Shared helpers: `verifyCaller(r)` (optional token extract), `checkOrderAccess(r, orderUserID)` (combined auth+authz), `checkUserIDAccess(r, targetUserID)` (for list filter), `canMarkItemStatus(roles, targetStatus)`
+
+---
+
+### Notification Service (`services/notification-service`, port 50058)
+**Proto:** `proto/notification/notification.proto`
+**Status:** Active — enabled in docker-compose.
+
+Pub/Sub message bus cho kitchen staff. **Không có DB** — dùng Redis Pub/Sub thuần túy.
+
+#### 2 RPCs:
+- `SendNotification(SendNotificationRequest)` — publish notification vào Redis channel `notifications:{target_role}`
+- `Subscribe(SubscribeRequest) returns (stream Notification)` — subscribe Redis channel, stream notifications đến client (dùng cho WebSocket gateway)
+
+#### Notification types:
+| Type | Trigger | Target | Payload |
+|------|---------|--------|---------|
+| `ORDER_CONFIRMED` | `UpdateOrderStatus → Confirmed` | `CHEF` | order_id, table_id, customer_name, party_size, notes, items[] |
+| `ITEM_READY` | `UpdateOrderItemStatus → READY` | `WAITER` | order_id, table_id, item_id, item_name |
+
+#### Notification entity fields:
+`id`, `type`, `target_role`, `order_id`, `table_id`, `item_id`, `item_name`, `created_at` (Unix), `message`, `customer_name`, `party_size`, `notes`, `items[]`
+
+**Redis channels:** `notifications:CHEF`, `notifications:WAITER`
+
+**Notification flow** (fire-and-forget, không block order operations):
+```
+order-service usecase → notifClient.SendNotification (background goroutine)
+  → notification-service gRPC → Redis PUBLISH notifications:{role}
+  → (future) api-gateway WebSocket → browser
+```
+
+**Config env vars:** `SERVER_PORT=50058`, `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_DB`
 
 ---
 
@@ -348,12 +409,17 @@ DB schema: `users` table (no roles column) + `user_roles` junction table. All Cr
 
 ---
 
-### Staff Service (`services/staff-service`, port 50052)
-**Proto:** `proto/staff/staff.proto`
+### Schedule Service (`services/schedule-service`, port 50052)
+**Proto:** `proto/schedule/schedule.proto`
+**Status:** Active — replaced staff-service (2026-06-10).
 
-- 5 RPCs: CreateStaff, GetStaff, UpdateStaff, DeleteStaff, ListStaff
-- `Staff`: StaffID, Name, Role, Contact, Avatar
-- Pagination + keyword search
+Quản lý ca làm việc cho nhân viên bếp. **Không có status field** — shift tồn tại = đã xác nhận. Xóa = hủy ca.
+
+- 5 RPCs: CreateShift, GetShift, UpdateShift, DeleteShift, ListShifts
+- `Shift`: ShiftID, UserID, Date (YYYY-MM-DD), StartTime (HH:MM), EndTime, Role, Notes, CreatedBy, CreatedAt, UpdatedAt
+- `user_id` links to user-service (UUID) — NOT enforced at DB level
+- `ListShifts` filters: month (YYYY-MM), user_id, role, page, page_size
+- Validation: user_id required, date format, StartTime < EndTime, Role in {CHEF, WAITER, MANAGER, ADMIN}
 
 ---
 
@@ -419,6 +485,35 @@ Active proto definitions (source of truth — do not edit generated `*.pb.go` fi
 
 ## Frontend Apps
 
+### restaurant-app-kitchen (Kitchen Display)
+**Port 5175** — Dành cho CHEF và WAITER. Auth gate giống admin app.
+
+```
+src/
+  store/       # authStore.ts (key: 'kitchen-auth') — KitchenUser, hasKitchenAccess, getDefaultRole
+  api/         # gateway.api.ts — ordersApi, authApi, usersApi, scheduleApi, createNotificationWS
+  hooks/       # useNotifications.ts — WebSocket hook, giữ tối đa 50 notif
+  pages/
+    LoginPage.tsx    # Dark theme, kiểm tra CHEF/WAITER/ADMIN/MANAGER role
+    KitchenPage.tsx  # CHEF view — confirmed orders, mark COOKING/READY per item
+    WaiterPage.tsx   # WAITER view — READY items feed + notification sidebar, mark SERVED
+    SchedulePage.tsx # My schedule — view/register own shifts (self-service)
+  App.tsx      # Auth gate + role routing; floating switcher 🍳/🛎/📅 cho tất cả roles
+```
+
+**Role routing** (`ActiveView = 'CHEF' | 'WAITER' | 'SCHEDULE'`):
+- CHEF → KitchenPage mặc định + floating switcher (🍳 Bếp + 📅 Lịch)
+- WAITER → WaiterPage mặc định + floating switcher (🛎 Phục vụ + 📅 Lịch)
+- ADMIN/MANAGER → KitchenPage mặc định + floating switcher (🍳 Bếp + 🛎 Phục vụ + 📅 Lịch)
+
+**WebSocket:** `ws://localhost:8080/ws/notifications?token=<jwt>&role=<CHEF|WAITER>`
+- KitchenPage (CHEF): nhận `ORDER_CONFIRMED` → auto-refresh danh sách order
+- WaiterPage (WAITER): nhận `ITEM_READY` → auto-refresh + hiển thị notification sidebar
+
+**Known gap:** `table_id` hiển thị dạng UUID (8 ký tự đầu) — chưa resolve `table_number` từ table-service.
+
+---
+
 ### restaurant-app (Customer)
 **State management:** `src/store/authStore.ts` — Zustand + persist (`luxe-customer-auth`), holds `user`, `accessToken`, `refreshToken`.
 **Routing:** `App.tsx` uses `currentPage` useState (not react-router). Protected pages: `reservation`, `my-orders` — redirect to `login` with `loginRedirect` state to return after success.
@@ -455,8 +550,7 @@ src/
     AnalyticsOverview.tsx
     MenuManagement.tsx
     OrdersManagement.tsx
-    StaffManagement.tsx
-    WeeklyScheduler.tsx
+    MonthlyScheduler.tsx
   services/       # api.ts (injects auth token in all requests), auth.ts
 ```
 
@@ -472,7 +566,7 @@ POSTGRES_PASSWORD=restaurant_pass
 POSTGRES_DB=restaurant_db
 ```
 
-**Active services:** postgres, redis, auth-service, menu-service, staff-service, table-service, order-service, user-service, api-gateway
+**Active services:** postgres, redis, auth-service, menu-service, schedule-service, table-service, order-service, notification-service, user-service, api-gateway
 
 Binaries are compiled locally and volume-mounted as `./server` inside each Alpine container.
 
@@ -483,11 +577,13 @@ Binaries are compiled locally and volume-mounted as `./server` inside each Alpin
 1. **Clean Architecture** — domain → repository → usecase → delivery; dependencies point inward only
 2. **Per-service go.mod** — each service is its own Go module linked to root via `replace restaurant-management => ../..`
 3. **Microservices via gRPC** — inter-service calls use generated gRPC clients; api-gateway clients live in `api-gateway/internal/grpcclient/`
-4. **API Gateway** — single HTTP entry point; handles CORS, translates JSON ↔ protobuf
+4. **API Gateway** — single HTTP entry point; handles CORS, translates JSON ↔ protobuf; WebSocket upgrade for `/ws/notifications`
 5. **Repository Pattern** — PostgreSQL implementations; `ensureSchema` auto-creates tables + `ALTER TABLE ADD COLUMN IF NOT EXISTS` for safe migrations
 6. **JWT + Redis** — stateless access tokens, revocable refresh tokens stored in Redis
 7. **Proto-first design** — `.proto` files define all contracts; regenerate with `scripts/generate-proto.sh`
 8. **Structured logging** — `go.uber.org/zap` via `shared/pkg/logger`
+9. **Redis Pub/Sub** — notification-service dùng Redis channels (`notifications:CHEF`, `notifications:WAITER`) làm message bus; order-service publish fire-and-forget
+10. **WebSocket + gRPC streaming** — api-gateway bridges browser WebSocket → notification-service `Subscribe` streaming RPC; context cancel trên WebSocket close tự đóng gRPC stream
 
 ---
 
@@ -525,7 +621,32 @@ Binaries are compiled locally and volume-mounted as `./server` inside each Alpin
 - **Customer app auth flow**: `store/authStore.ts` (Zustand persist), `LoginPage.tsx` (login+register), `MyOrdersPage.tsx` (loads via `ordersApi.list({user_id})`). `App.tsx` routes with `loginRedirect` state — redirects back to intended page after login. `TopNavBar.tsx` auth-aware.
 - **Admin app auth gate**: `store/adminAuthStore.ts`, `Login.tsx` wired to API with role validation, `App.tsx` renders login if no user, `Sidebar.tsx` shows real user info + logout, `services/api.ts` injects Bearer token.
 
+### Item status + notification-service (2026-06-10)
+- **`proto/order/order.proto`**: Added `item_status` field (string) to `OrderItem`. Added `UpdateOrderItemStatus` RPC (10th RPC).
+- **`services/order-service`**: `ItemStatus` type with state machine (`PENDING→COOKING→READY→SERVED`). `UpdateItemStatus` method on `Order` domain entity. `UpdateItemStatus` SQL (targeted row update). `UpdateOrderItemStatus` usecase + gRPC handler. `notifyChef` / `notifyWaiter` background goroutines triggered on status change.
+- **`proto/notification/notification.proto`**: New proto — `SendNotification` + `Subscribe` (streaming) RPCs.
+- **`services/notification-service`**: New microservice (port 50058) — Redis Pub/Sub backend, no DB. `PubSubRepository`, `NotificationUseCase`, gRPC handler.
+- **`api-gateway`**: `canMarkItemStatus(roles, targetStatus)` helper — CHEF marks COOKING/READY, WAITER marks SERVED. New route `PATCH /orders/{id}/items/{itemId}/status`.
+- **`docker-compose.yml`**: notification-service added. order-service gets `NOTIFICATION_SERVICE_ADDR`.
+
+### WebSocket + Kitchen app (2026-06-10)
+- **`api-gateway`**: `gorilla/websocket` dependency added. `GET /ws/notifications?token=<jwt>&role=<CHEF|WAITER>` endpoint. `NotificationHandler` — upgrade WebSocket, verify JWT, open `notification-service.Subscribe` gRPC streaming, forward JSON notifications. Origin check: 5173/5174/5175. gRPC stream cancelled when WebSocket closes via drain goroutine.
+- **`api-gateway/internal/grpcclient/notification_client.go`**: `NotificationClient` wrapping gRPC streaming `Subscribe` RPC.
+- **`restaurant-app-kitchen/`**: New React app (port 5175) — dark-themed kitchen display. `KitchenPage` (CHEF): confirmed orders, mark COOKING/READY. `WaiterPage` (WAITER): READY items feed + notification sidebar, mark SERVED. Role-auto-routing; ADMIN/MANAGER floating view switcher.
+- **`docker-compose.yml`**: api-gateway gets `NOTIFICATION_SERVICE_HOST/PORT` env vars.
+
+### Schedule service — replaced staff-service (2026-06-10)
+- **`proto/schedule/schedule.proto`**: New proto — 5 RPCs (CreateShift/GetShift/UpdateShift/DeleteShift/ListShifts). `Shift` message has no status field.
+- **`services/schedule-service/`**: New microservice (port 50052). Clean Architecture. `shifts` DB table. `ListShifts` filters by `month/user_id/role`. Validation: date format, EndTime > StartTime, role in allowed set.
+- **`api-gateway`**: `schedule_client.go` + `schedule_handler.go` (5 routes under `/schedule/shifts`). Auth required on all endpoints. POST: self-register any staff; assign others → ADMIN/MANAGER only. GET/PUT/DELETE: owner or ADMIN/MANAGER.
+- **Admin app**: `MonthlyScheduler.tsx` — monthly calendar grid (replaced `StaffManagement.tsx` + `WeeklyScheduler.tsx`). Color-coded chips by role. Create/delete shifts. Loads staff names from `/users?page_size=200`.
+- **Kitchen app**: `SchedulePage.tsx` — self-service shift registration/deletion. `scheduleApi` added to `gateway.api.ts`. App.tsx adds 📅 Lịch tab to floating switcher for all roles.
+- **`docker-compose.yml`**: staff-service block → schedule-service. api-gateway env `SCHEDULE_SERVICE_*`.
+
 ### Known gaps / TODO
 - Operating hours (10:00–22:00) enforced only in frontend — no backend validation in order-service
-- Admin dashboard (`OrdersManagement.tsx`) may need update to reflect new order fields (`notes`, `end_time`, `user_id`, auto-assigned `table_id`)
-- No role-based middleware for menu/staff/table/user routes in api-gateway — only order endpoints have auth
+- Admin dashboard (`OrdersManagement.tsx`) may need update to reflect new order fields (`notes`, `end_time`, `user_id`, auto-assigned `table_id`, `item_status`)
+- No role-based middleware for menu/schedule/table/user routes in api-gateway — only order endpoints have auth
+- `table_id` trong notification/kitchen app hiển thị dạng UUID cắt ngắn — chưa resolve `table_number` từ table-service
+- Kitchen app không có auto-reconnect khi WebSocket mất kết nối
+- schedule-service không validate trùng ca (cùng user, cùng ngày, cùng giờ)

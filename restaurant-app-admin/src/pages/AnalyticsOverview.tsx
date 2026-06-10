@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import Header from '../components/HeaderDashboard';
 import KPIGrid, { type KPIItem } from '../components/KPIGrid';
 import PerformanceTable from '../components/PerformanceTable';
-import { menuApi, ordersApi, staffApi, type MenuItemDto, type OrderDto } from '../services/api';
+import { menuApi, ordersApi, type MenuItemDto, type OrderDto } from '../services/api';
 
 const currency = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
 
@@ -20,7 +20,6 @@ const AnalyticsOverview: React.FC = () => {
   const [selectedMonth, setSelectedMonth] = useState<string>('October 2023');
   const [orders, setOrders] = useState<OrderDto[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItemDto[]>([]);
-  const [staffTotal, setStaffTotal] = useState<number>(0);
   const [error, setError] = useState<string>('');
 
   useEffect(() => {
@@ -29,13 +28,11 @@ const AnalyticsOverview: React.FC = () => {
     Promise.all([
       ordersApi.list({ page: 1, page_size: 100 }),
       menuApi.listItems({ page: 1, page_size: 100 }),
-      staffApi.list({ page: 1, page_size: 100 }),
     ])
-      .then(([ordersResponse, menuResponse, staffResponse]) => {
+      .then(([ordersResponse, menuResponse]) => {
         if (!isMounted) return;
         setOrders(ordersResponse.orders ?? []);
         setMenuItems(menuResponse.items ?? []);
-        setStaffTotal(staffResponse.total ?? staffResponse.staff?.length ?? 0);
       })
       .catch((err) => {
         if (isMounted) {
@@ -75,10 +72,10 @@ const AnalyticsOverview: React.FC = () => {
       isPrimary: false,
     },
     {
-      title: 'Staff Members',
-      value: staffTotal.toLocaleString('en-US'),
-      trend: 'From staff-service',
-      isUp: staffTotal > 0,
+      title: 'Menu Items',
+      value: menuItems.length.toLocaleString('en-US'),
+      trend: 'From menu-service',
+      isUp: menuItems.length > 0,
       isPrimary: false,
     },
   ];

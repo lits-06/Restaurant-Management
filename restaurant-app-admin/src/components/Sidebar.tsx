@@ -13,7 +13,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, user, onLogo
     { icon: 'dashboard', label: 'Dashboard' },
     { icon: 'restaurant_menu', label: 'Menu' },
     { icon: 'receipt_long', label: 'Orders' },
-    { icon: 'people', label: 'Staff' },
+    { icon: 'calendar_month', label: 'Staff' },
   ];
 
   const initials = (user.full_name || user.username || 'A')

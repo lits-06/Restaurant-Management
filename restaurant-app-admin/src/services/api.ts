@@ -84,13 +84,17 @@ export interface OrderDto {
   items?: OrderItemDto[];
 }
 
-export interface StaffDto {
-  staff_id?: string;
-  staffId?: string;
-  name?: string;
+export interface ShiftDto {
+  shift_id?: string;
+  user_id?: string;
+  date?: string;
+  start_time?: string;
+  end_time?: string;
   role?: string;
-  contact?: string;
-  avatar?: string;
+  notes?: string;
+  created_by?: string;
+  created_at?: { seconds?: number; nanos?: number } | string;
+  updated_at?: { seconds?: number; nanos?: number } | string;
 }
 
 export interface UserDto {
@@ -120,6 +124,8 @@ export const authApi = {
 export const usersApi = {
   getOne: (id: string) =>
     request<{ user?: UserDto; success?: boolean; message?: string }>(`/users/${id}`),
+  listAll: () =>
+    request<{ users?: UserDto[]; total?: number }>('/users', undefined, { page_size: 200 }),
 };
 
 export const menuApi = {
@@ -147,12 +153,13 @@ export const ordersApi = {
   delete: (orderId: string) => request<{ success?: boolean }>(`/orders/${orderId}`, { method: 'DELETE' }),
 };
 
-export const staffApi = {
-  list: (query?: { page?: number; page_size?: number; keyword?: string }) =>
-    request<{ staff?: StaffDto[]; total?: number }>('/staff', undefined, query),
-  create: (payload: { name: string; role: string; contact: string; avatar: string }) =>
-    request<{ staff?: StaffDto }>('/staff', { method: 'POST', body: JSON.stringify(payload) }),
-  update: (staffId: string, payload: { name: string; role: string; contact: string; avatar: string }) =>
-    request<{ staff?: StaffDto }>(`/staff/${staffId}`, { method: 'PUT', body: JSON.stringify(payload) }),
-  delete: (staffId: string) => request<{ success?: boolean }>(`/staff/${staffId}`, { method: 'DELETE' }),
+export const scheduleApi = {
+  list: (query?: { month?: string; user_id?: string; role?: string }) =>
+    request<{ shifts?: ShiftDto[]; total?: number }>('/schedule/shifts', undefined, query),
+  create: (payload: { user_id: string; date: string; start_time: string; end_time: string; role: string; notes?: string }) =>
+    request<{ shift?: ShiftDto; success?: boolean; message?: string }>('/schedule/shifts', { method: 'POST', body: JSON.stringify(payload) }),
+  update: (shiftId: string, payload: { date?: string; start_time?: string; end_time?: string; notes?: string }) =>
+    request<{ shift?: ShiftDto; success?: boolean; message?: string }>(`/schedule/shifts/${shiftId}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  delete: (shiftId: string) =>
+    request<{ success?: boolean }>(`/schedule/shifts/${shiftId}`, { method: 'DELETE' }),
 };

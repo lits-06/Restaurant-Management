@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"restaurant-management/proto/menu"
+	notifpb "restaurant-management/proto/notification"
 	"restaurant-management/services/order-service/internal/domain"
 	"restaurant-management/services/order-service/internal/repository"
 )
@@ -27,24 +28,33 @@ type TableServiceClient interface {
 	GetAvailableTables(ctx context.Context, minCapacity int32) ([]TableInfo, error)
 }
 
+// NotificationServiceClient sends push notifications to kitchen/waiter staff.
+// If nil, notifications are silently skipped.
+type NotificationServiceClient interface {
+	SendNotification(ctx context.Context, req *notifpb.SendNotificationRequest) (*notifpb.SendNotificationResponse, error)
+}
+
 // OrderUseCase handles order business logic.
 type OrderUseCase struct {
 	orderRepo   repository.OrderRepository
 	menuClient  MenuServiceClient
-	tableClient TableServiceClient // optional; nil = auto-assign disabled
+	tableClient  TableServiceClient          // optional; nil = auto-assign disabled
+	notifClient NotificationServiceClient    // optional; nil = notifications disabled
 }
 
 // NewOrderUseCase creates a new OrderUseCase.
-// tableClient may be nil — callers must then provide table_id explicitly.
+// tableClient and notifClient may be nil.
 func NewOrderUseCase(
 	orderRepo repository.OrderRepository,
 	menuClient MenuServiceClient,
 	tableClient TableServiceClient,
+	notifClient NotificationServiceClient,
 ) *OrderUseCase {
 	return &OrderUseCase{
 		orderRepo:   orderRepo,
 		menuClient:  menuClient,
 		tableClient: tableClient,
+		notifClient: notifClient,
 	}
 }
 
@@ -222,6 +232,7 @@ func (uc *OrderUseCase) ListOrders(ctx context.Context, page, pageSize int, stat
 }
 
 // UpdateOrderStatus updates the status of an order.
+// When transitioning to Confirmed, notifies CHEF with full order details.
 func (uc *OrderUseCase) UpdateOrderStatus(ctx context.Context, orderID string, newStatus domain.OrderStatus) (*domain.Order, error) {
 	order, err := uc.orderRepo.GetByID(ctx, orderID)
 	if err != nil {
@@ -232,6 +243,9 @@ func (uc *OrderUseCase) UpdateOrderStatus(ctx context.Context, orderID string, n
 	}
 	if err := uc.orderRepo.Update(ctx, order); err != nil {
 		return nil, fmt.Errorf("failed to save order: %w", err)
+	}
+	if newStatus == domain.StatusConfirmed && uc.notifClient != nil {
+		uc.notifyChef(ctx, order)
 	}
 	return order, nil
 }
@@ -262,6 +276,7 @@ func (uc *OrderUseCase) AddOrderItem(ctx context.Context, orderID string, req Or
 // UpdateOrderItemStatus advances the item_status of a single item within an order.
 // Validates the transition (PENDING→COOKING→READY→SERVED), then persists only
 // the item row (no full order update needed). Returns the full refreshed order.
+// When transitioning to READY, notifies WAITER.
 func (uc *OrderUseCase) UpdateOrderItemStatus(ctx context.Context, orderID, itemID string, next domain.ItemStatus) (*domain.Order, error) {
 	order, err := uc.orderRepo.GetByID(ctx, orderID)
 	if err != nil {
@@ -273,6 +288,15 @@ func (uc *OrderUseCase) UpdateOrderItemStatus(ctx context.Context, orderID, item
 	}
 	if err := uc.orderRepo.UpdateItemStatus(ctx, orderID, itemID, next); err != nil {
 		return nil, fmt.Errorf("failed to update item status: %w", err)
+	}
+	if next == domain.ItemStatusReady && uc.notifClient != nil {
+		// Find item name for notification.
+		for _, item := range order.Items {
+			if item.ItemID == itemID {
+				uc.notifyWaiter(ctx, order, item)
+				break
+			}
+		}
 	}
 	// Return fresh order so caller has up-to-date item list.
 	return uc.orderRepo.GetByID(ctx, orderID)
@@ -294,4 +318,49 @@ func (uc *OrderUseCase) RemoveOrderItem(ctx context.Context, orderID, itemID str
 		return nil, fmt.Errorf("failed to save order: %w", err)
 	}
 	return order, nil
+}
+
+// notifyChef sends ORDER_CONFIRMED notification to CHEF channel.
+// Runs in a background goroutine — failures are silently ignored so they don't block order updates.
+func (uc *OrderUseCase) notifyChef(ctx context.Context, order *domain.Order) {
+	pbItems := make([]*notifpb.NotificationOrderItem, 0, len(order.Items))
+	for _, it := range order.Items {
+		pbItems = append(pbItems, &notifpb.NotificationOrderItem{
+			ItemId:   it.ItemID,
+			ItemName: it.Name,
+			Quantity: it.Quantity,
+		})
+	}
+	req := &notifpb.SendNotificationRequest{
+		Type:         "ORDER_CONFIRMED",
+		TargetRole:   "CHEF",
+		OrderId:      order.OrderID,
+		TableId:      order.TableID,
+		CustomerName: order.Name,
+		PartySize:    order.PartySize,
+		Notes:        order.Notes,
+		Message:      fmt.Sprintf("Order mới - %s - %d người", order.Name, order.PartySize),
+		Items:        pbItems,
+	}
+	go func() {
+		bgCtx := context.Background()
+		uc.notifClient.SendNotification(bgCtx, req) //nolint:errcheck
+	}()
+}
+
+// notifyWaiter sends ITEM_READY notification to WAITER channel.
+func (uc *OrderUseCase) notifyWaiter(ctx context.Context, order *domain.Order, item *domain.OrderItem) {
+	req := &notifpb.SendNotificationRequest{
+		Type:       "ITEM_READY",
+		TargetRole: "WAITER",
+		OrderId:    order.OrderID,
+		TableId:    order.TableID,
+		ItemId:     item.ItemID,
+		ItemName:   item.Name,
+		Message:    fmt.Sprintf("%s sẵn sàng - Bàn %s", item.Name, order.TableID),
+	}
+	go func() {
+		bgCtx := context.Background()
+		uc.notifClient.SendNotification(bgCtx, req) //nolint:errcheck
+	}()
 }

@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+package notification;
+
+option go_package = "restaurant-management/proto/notification";
+
+service NotificationService {
+  rpc SendNotification(SendNotificationRequest) returns (SendNotificationResponse);
+  rpc Subscribe(SubscribeRequest) returns (stream Notification);
+}
+
+message NotificationOrderItem {
+  string item_id   = 1;
+  string item_name = 2;
+  int32  quantity  = 3;
+}
+
+message Notification {
+  string id            = 1;
+  string type          = 2;
+  string target_role   = 3;
+  string order_id      = 4;
+  string table_id      = 5;
+  string item_id       = 6;
+  string item_name     = 7;
+  int64  created_at    = 8;
+  string message       = 9;
+  string customer_name = 10;
+  int32  party_size    = 11;
+  string notes         = 12;
+  repeated NotificationOrderItem items = 13;
+}
+
+message SendNotificationRequest {
+  string type          = 1;
+  string target_role   = 2;
+  string order_id      = 3;
+  string table_id      = 4;
+  string item_id       = 5;
+  string item_name     = 6;
+  string message       = 7;
+  string customer_name = 8;
+  int32  party_size    = 9;
+  string notes         = 10;
+  repeated NotificationOrderItem items = 11;
+}
+
+message SendNotificationResponse {
+  bool   success = 1;
+  string message = 2;
+}
+
+message SubscribeRequest {
+  string role = 1;
+}

@@ -58,23 +58,23 @@ services:
     depends_on:
       - postgres
 
-  staff-service:
-    image: alpine:latest
-    container_name: staff-service
-    working_dir: /app/staff-service
+  schedule-service:
+    image: alpine:3.18
+    container_name: schedule-service
+    working_dir: /app
     command: ["sh", "-c", "chmod +x ./server && ./server"]
     environment:
-      - GRPC_PORT=50052
-      - DATABASE_HOST=postgres
-      - DATABASE_PORT=5432
-      - DATABASE_USER=restaurant_user
-      - DATABASE_PASSWORD=restaurant_pass
-      - DATABASE_NAME=restaurant_db
-      - DATABASE_SSLMODE=disable
+      - SERVER_PORT=50052
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=restaurant_user
+      - DB_PASSWORD=restaurant_pass
+      - DB_NAME=restaurant_db
+      - DB_SSLMODE=disable
     ports:
       - "50052:50052"
     volumes:
-      - ./services/staff-service:/app/staff-service
+      - ./services/schedule-service/server:/app/server
     depends_on:
       - postgres
 
@@ -113,6 +113,7 @@ services:
       - DATABASE_SSLMODE=disable
       - MENU_SERVICE_ADDR=menu-service:50054
       - TABLE_SERVICE_ADDR=table-service:50053
+      - NOTIFICATION_SERVICE_ADDR=notification-service:50058
       - LOG_LEVEL=info
     ports:
       - "50055:50055"
@@ -121,6 +122,23 @@ services:
     depends_on:
       - postgres
       - table-service
+      - notification-service
+
+  notification-service:
+    image: alpine:latest
+    container_name: notification-service
+    working_dir: /app/notification-service
+    command: ["sh", "-c", "chmod +x ./server && ./server"]
+    environment:
+      - SERVER_PORT=50058
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    ports:
+      - "50058:50058"
+    volumes:
+      - ./services/notification-service:/app/notification-service
+    depends_on:
+      - redis
 
   user-service:
     image: alpine:latest
@@ -153,8 +171,8 @@ services:
     environment:
       - SERVER_PORT=8080
       - AUTH_SERVICE_HOST=auth-service
-      - STAFF_SERVICE_HOST=staff-service
-      - STAFF_SERVICE_PORT=50052
+      - SCHEDULE_SERVICE_HOST=schedule-service
+      - SCHEDULE_SERVICE_PORT=50052
       - MENU_SERVICE_HOST=menu-service
       - MENU_SERVICE_PORT=50054
       - ORDER_SERVICE_HOST=order-service
@@ -163,6 +181,8 @@ services:
       - TABLE_SERVICE_PORT=50053
       - USER_SERVICE_HOST=user-service
       - USER_SERVICE_PORT=50056
+      - NOTIFICATION_SERVICE_HOST=notification-service
+      - NOTIFICATION_SERVICE_PORT=50058
       - ENVIRONMENT=development
     ports:
       - "8080:8080"
@@ -174,6 +194,7 @@ services:
       - order-service
       - table-service
       - user-service
+      - notification-service
 
 volumes:
   postgres_data:

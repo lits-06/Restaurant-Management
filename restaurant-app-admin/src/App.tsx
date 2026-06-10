@@ -4,8 +4,7 @@ import Footer from './components/Footer';
 import AnalyticsOverview from './pages/AnalyticsOverview';
 import MenuManagement from './pages/MenuManagement';
 import OrdersManagement from './pages/OrdersManagement';
-import StaffManagement from './pages/StaffManagement';
-import WeeklyScheduler from './pages/WeeklyScheduler';
+import MonthlyScheduler from './pages/MonthlyScheduler';
 import LoginPage from './pages/Login';
 import { useAdminAuthStore } from './store/adminAuthStore';
 import { authApi } from './services/api';
@@ -13,12 +12,6 @@ import { authApi } from './services/api';
 const App: React.FC = () => {
   const { user, clearAuth, refreshToken } = useAdminAuthStore();
   const [activeTab, setActiveTab] = useState<string>('Dashboard');
-  const [staffView, setStaffView] = useState<'management' | 'scheduler'>('management');
-
-  const handleSetActiveTab = (tab: string) => {
-    if (tab !== 'Staff') setStaffView('management');
-    setActiveTab(tab);
-  };
 
   const handleLogout = async () => {
     if (refreshToken) {
@@ -39,7 +32,7 @@ const App: React.FC = () => {
     <div className="bg-[#f8f9fa] text-[#191c1d] font-sans overflow-x-hidden min-h-screen">
       <Sidebar
         activeTab={activeTab}
-        setActiveTab={handleSetActiveTab}
+        setActiveTab={setActiveTab}
         user={user}
         onLogout={handleLogout}
       />
@@ -55,16 +48,9 @@ const App: React.FC = () => {
           <div className={activeTab === 'Orders' ? 'block' : 'hidden'}>
             <OrdersManagement />
           </div>
-          {activeTab === 'Staff' && (
-            <>
-              <div className={staffView === 'management' ? 'block' : 'hidden'}>
-                <StaffManagement onNavigateToScheduler={() => setStaffView('scheduler')} />
-              </div>
-              <div className={staffView === 'scheduler' ? 'block' : 'hidden'}>
-                <WeeklyScheduler onBack={() => setStaffView('management')} />
-              </div>
-            </>
-          )}
+          <div className={activeTab === 'Staff' ? 'block' : 'hidden'}>
+            <MonthlyScheduler />
+          </div>
         </div>
         <Footer />
       </main>

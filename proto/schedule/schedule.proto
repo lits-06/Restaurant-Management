@@ -1,0 +1,94 @@
+syntax = "proto3";
+
+package schedule;
+
+option go_package = "restaurant-management/proto/schedule";
+
+import "google/protobuf/timestamp.proto";
+
+service ScheduleService {
+  rpc CreateShift(CreateShiftRequest) returns (CreateShiftResponse);
+  rpc GetShift(GetShiftRequest)       returns (GetShiftResponse);
+  rpc UpdateShift(UpdateShiftRequest) returns (UpdateShiftResponse);
+  rpc DeleteShift(DeleteShiftRequest) returns (DeleteShiftResponse);
+  rpc ListShifts(ListShiftsRequest)   returns (ListShiftsResponse);
+}
+
+message Shift {
+  string shift_id   = 1;
+  string user_id    = 2;
+  string date       = 3;  // YYYY-MM-DD
+  string start_time = 4;  // HH:MM
+  string end_time   = 5;  // HH:MM
+  string role       = 6;  // CHEF | WAITER | MANAGER
+  string notes      = 7;
+  string created_by = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp updated_at = 10;
+}
+
+// ── CreateShift ───────────────────────────────────────────────
+message CreateShiftRequest {
+  string user_id    = 1;
+  string date       = 2;
+  string start_time = 3;
+  string end_time   = 4;
+  string role       = 5;
+  string notes      = 6;
+  string created_by = 7;
+}
+message CreateShiftResponse {
+  Shift  shift   = 1;
+  bool   success = 2;
+  string message = 3;
+}
+
+// ── GetShift ──────────────────────────────────────────────────
+message GetShiftRequest {
+  string shift_id = 1;
+}
+message GetShiftResponse {
+  Shift  shift   = 1;
+  bool   success = 2;
+  string message = 3;
+}
+
+// ── UpdateShift ───────────────────────────────────────────────
+message UpdateShiftRequest {
+  string shift_id   = 1;
+  string date       = 2;
+  string start_time = 3;
+  string end_time   = 4;
+  string notes      = 5;
+}
+message UpdateShiftResponse {
+  Shift  shift   = 1;
+  bool   success = 2;
+  string message = 3;
+}
+
+// ── DeleteShift ───────────────────────────────────────────────
+message DeleteShiftRequest {
+  string shift_id = 1;
+}
+message DeleteShiftResponse {
+  bool   success = 1;
+  string message = 2;
+}
+
+// ── ListShifts ────────────────────────────────────────────────
+message ListShiftsRequest {
+  string month     = 1;  // "YYYY-MM" — filter by month
+  string user_id   = 2;  // optional
+  string role      = 3;  // optional
+  int32  page      = 4;
+  int32  page_size = 5;
+}
+message ListShiftsResponse {
+  repeated Shift shifts    = 1;
+  int32          total     = 2;
+  int32          page      = 3;
+  int32          page_size = 4;
+  bool           success   = 5;
+  string         message   = 6;
+}

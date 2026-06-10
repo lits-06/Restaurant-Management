@@ -100,6 +100,27 @@ func hasStaffRole(roles []string) bool {
 	return false
 }
 
+// canMarkItemStatus enforces role-based transition rules:
+// COOKING/READY → CHEF, ADMIN, MANAGER
+// SERVED        → WAITER, ADMIN, MANAGER
+func canMarkItemStatus(roles []string, targetStatus string) bool {
+	switch targetStatus {
+	case "COOKING", "READY":
+		for _, r := range roles {
+			if r == "ADMIN" || r == "MANAGER" || r == "CHEF" {
+				return true
+			}
+		}
+	case "SERVED":
+		for _, r := range roles {
+			if r == "ADMIN" || r == "MANAGER" || r == "WAITER" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (h *OrderHandler) checkOrderAccess(r *http.Request, orderUserID string) (int, error) {
 	if orderUserID == "" {
 		return 0, nil
@@ -426,15 +447,6 @@ func (h *OrderHandler) UpdateOrderItemStatus(w http.ResponseWriter, r *http.Requ
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "order_id and item_id are required"})
 		return
 	}
-	caller, err := h.verifyCaller(r)
-	if err != nil {
-		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": err.Error()})
-		return
-	}
-	if caller == nil || !hasStaffRole(caller.Roles) {
-		writeJSON(w, http.StatusForbidden, map[string]any{"error": "staff access required"})
-		return
-	}
 	var req updateOrderItemStatusRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid request body"})
@@ -442,6 +454,15 @@ func (h *OrderHandler) UpdateOrderItemStatus(w http.ResponseWriter, r *http.Requ
 	}
 	if req.ItemStatus == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "item_status is required"})
+		return
+	}
+	caller, err := h.verifyCaller(r)
+	if err != nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": err.Error()})
+		return
+	}
+	if caller == nil || !canMarkItemStatus(caller.Roles, req.ItemStatus) {
+		writeJSON(w, http.StatusForbidden, map[string]any{"error": "insufficient role for this status transition"})
 		return
 	}
 	resp, err := h.orderClient.UpdateOrderItemStatus(r.Context(), &orderpb.UpdateOrderItemStatusRequest{
