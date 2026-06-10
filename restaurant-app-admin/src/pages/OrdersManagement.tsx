@@ -266,7 +266,7 @@ const OrdersManagement: React.FC = () => {
                                         </div>
                                     </td>
                                     <td className="px-6 py-5">
-                                        <p className="text-sm text-on-surface">Today, {res.time}</p>
+                                        <p className="text-sm text-on-surface">{res.time}</p>
                                         <p className="text-[12px] text-on-surface-variant italic">{res.date}</p>
                                     </td>
                                     <td className="px-6 py-5">

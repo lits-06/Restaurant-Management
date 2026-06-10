@@ -6,6 +6,7 @@ import (
 	"time"
 )
 
+
 // OrderStatus represents the reservation/order state shown in the admin UI.
 type OrderStatus string
 
@@ -26,9 +27,13 @@ var allowedOrderStatuses = map[OrderStatus]struct{}{
 // Order represents a reservation/order record used by the admin UI.
 type Order struct {
 	OrderID   string
+	TableID   string
+	UserID    string
 	Name      string
 	Phone     string
+	Notes     string
 	Time      time.Time
+	EndTime   time.Time
 	PartySize int32
 	Status    OrderStatus
 	Total     float64
@@ -43,9 +48,11 @@ func (o *Order) Validate() error {
 	if o.Phone == "" {
 		return ErrOrderPhoneRequired
 	}
-
 	if o.Time.IsZero() {
 		return ErrOrderTimeRequired
+	}
+	if !o.EndTime.IsZero() && !o.EndTime.After(o.Time) {
+		return ErrOrderEndTimeInvalid
 	}
 	if o.PartySize <= 0 {
 		return ErrOrderPartySizeInvalid
@@ -136,18 +143,31 @@ func (o *Order) RemoveItem(itemID string) error {
 }
 
 // NewOrder creates a new order record.
-func NewOrder(name, phone, timeValue, date string, partySize int32, status OrderStatus, items []*OrderItem) (*Order, error) {
+func NewOrder(tableID, userID, name, phone, notes, timeValue, endTimeValue, date string, partySize int32, status OrderStatus, items []*OrderItem) (*Order, error) {
 	if status == "" {
 		status = StatusPending
 	}
-	time, err := ParseReservationTime(date, timeValue)
+	startTime, err := ParseReservationTime(date, timeValue)
 	if err != nil {
-		return nil, fmt.Errorf("invalid reservation time: %w", err)
+		return nil, fmt.Errorf("invalid start time: %w", err)
 	}
+
+	var endTime time.Time
+	if strings.TrimSpace(endTimeValue) != "" {
+		endTime, err = ParseReservationTime(date, endTimeValue)
+		if err != nil {
+			return nil, fmt.Errorf("invalid end time: %w", err)
+		}
+	}
+
 	order := &Order{
-		Name:      name,
-		Phone:     phone,
-		Time:      time,
+		TableID:   strings.TrimSpace(tableID),
+		UserID:    strings.TrimSpace(userID),
+		Name:      strings.TrimSpace(name),
+		Phone:     strings.TrimSpace(phone),
+		Notes:     strings.TrimSpace(notes),
+		Time:      startTime,
+		EndTime:   endTime,
 		PartySize: partySize,
 		Status:    status,
 		Items:     items,
@@ -174,6 +194,36 @@ func (o *Order) TotalPrice() float64 {
 	}
 
 	return total
+}
+
+// UpdateItemStatus advances the status of a single item, enforcing valid transitions.
+func (o *Order) UpdateItemStatus(itemID string, next ItemStatus) error {
+	if !next.IsValid() {
+		return ErrOrderItemStatusInvalid
+	}
+	for _, item := range o.Items {
+		if item.ItemID == itemID {
+			if !item.ItemStatus.CanTransitionTo(next) {
+				return ErrOrderItemInvalidStatusTransition
+			}
+			item.ItemStatus = next
+			return nil
+		}
+	}
+	return ErrOrderItemNotFound
+}
+
+// AllItemsServed reports whether every item in the order has been served.
+func (o *Order) AllItemsServed() bool {
+	if len(o.Items) == 0 {
+		return false
+	}
+	for _, item := range o.Items {
+		if item.ItemStatus != ItemStatusServed {
+			return false
+		}
+	}
+	return true
 }
 
 // Clone creates a shallow clone with copied item slice.

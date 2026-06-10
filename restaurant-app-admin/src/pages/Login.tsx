@@ -1,10 +1,19 @@
 import React, { useState, useEffect } from 'react';
+import { authApi, usersApi } from '../services/api';
+import { useAdminAuthStore, hasAdminAccess } from '../store/adminAuthStore';
 
-export default function LoginPage() {
+interface LoginPageProps {
+  onSuccess: () => void;
+}
+
+export default function LoginPage({ onSuccess }: LoginPageProps) {
     const [showPassword, setShowPassword] = useState(false);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
-    const [rememberMe, setRememberMe] = useState(false);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+
+    const { setAuth } = useAdminAuthStore();
 
     // Hiệu ứng Parallax nền khi di chuột
     useEffect(() => {
@@ -21,10 +30,38 @@ export default function LoginPage() {
         };
     }, []);
 
-    const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
-        // Xử lý logic đăng nhập tại đây
-        console.log({ email, password, rememberMe });
+        setError('');
+        setLoading(true);
+        try {
+            const res = await authApi.login(email, password);
+            if (!res.user_id || !res.access_token || !res.refresh_token) {
+                throw new Error('Phản hồi máy chủ không hợp lệ.');
+            }
+            const profileRes = await usersApi.getOne(res.user_id);
+            const u = profileRes.user;
+            const roles = u?.roles ?? [];
+            if (!hasAdminAccess(roles)) {
+                throw new Error('Tài khoản của bạn không có quyền truy cập admin.');
+            }
+            setAuth(
+                {
+                    user_id: res.user_id,
+                    email: u?.email || email,
+                    username: u?.username || '',
+                    full_name: u?.full_name || '',
+                    roles,
+                },
+                res.access_token,
+                res.refresh_token
+            );
+            onSuccess();
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Đăng nhập thất bại.');
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
@@ -101,31 +138,25 @@ export default function LoginPage() {
                                 </div>
                             </div>
 
-                            {/* Utilities */}
-                            <div className="flex items-center justify-between py-1">
-                                <label className="flex items-center cursor-pointer group">
-                                    <input
-                                        type="checkbox"
-                                        checked={rememberMe}
-                                        onChange={(e) => setRememberMe(e.target.checked)}
-                                        className="w-5 h-5 rounded border-outline-variant text-primary focus:ring-primary/20 cursor-pointer"
-                                    />
-                                    <span className="ml-3 font-body-md text-[14px] text-on-surface-variant group-hover:text-on-surface transition-colors">
-                                        Remember me
-                                    </span>
-                                </label>
-                                <a className="font-label-sm text-[12px] text-primary hover:text-on-primary-fixed-variant transition-colors underline decoration-primary/30 underline-offset-4" href="#forgot">
-                                    Forgot Password?
-                                </a>
-                            </div>
+                            {/* Error */}
+                            {error && (
+                                <p className="text-sm text-error bg-error/10 rounded-lg px-3 py-2">{error}</p>
+                            )}
 
                             {/* Submit Button */}
                             <button
                                 type="submit"
-                                className="w-full h-14 bg-primary-container hover:bg-[#c29d2b] active:scale-[0.98] text-on-primary-container font-label-sm text-[12px] uppercase tracking-widest rounded-lg transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2"
+                                disabled={loading}
+                                className="w-full h-14 bg-primary-container hover:bg-[#c29d2b] active:scale-[0.98] text-on-primary-container font-label-sm text-[12px] uppercase tracking-widest rounded-lg transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2 disabled:opacity-60"
                             >
-                                <span>Sign In</span>
-                                <span className="material-symbols-outlined text-[18px]">login</span>
+                                {loading ? (
+                                    <span className="material-symbols-outlined animate-spin text-[18px]">progress_activity</span>
+                                ) : (
+                                    <>
+                                        <span>Sign In</span>
+                                        <span className="material-symbols-outlined text-[18px]">login</span>
+                                    </>
+                                )}
                             </button>
                         </form>
 

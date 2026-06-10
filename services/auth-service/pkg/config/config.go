@@ -1,29 +1,16 @@
 package config
 
 import (
-	"github.com/spf13/viper"
+	"os"
+	"strconv"
 )
 
-// Config holds the configuration for Auth Service
 type Config struct {
-	Server   ServerConfig
-	Database DatabaseConfig
-	Redis    RedisConfig
-	JWT      JWTConfig
-}
-
-type ServerConfig struct {
-	Port        int
-	Environment string
-}
-
-type DatabaseConfig struct {
-	Host     string
-	Port     int
-	User     string
-	Password string
-	Database string
-	SSLMode  string
+	ServerPort      int
+	Environment     string
+	UserServiceAddr string
+	Redis           RedisConfig
+	JWT             JWTConfig
 }
 
 type RedisConfig struct {
@@ -35,30 +22,46 @@ type RedisConfig struct {
 
 type JWTConfig struct {
 	SecretKey            string
-	AccessTokenDuration  int // in minutes
-	RefreshTokenDuration int // in hours
+	AccessTokenMinutes   int
+	RefreshTokenHours    int
 	Issuer               string
 }
 
-// Load loads the configuration
-func Load() (*Config, error) {
-	viper.SetConfigName("config")
-	viper.SetConfigType("yaml")
-	viper.AddConfigPath(".")
-	viper.AddConfigPath("./config")
-	viper.AddConfigPath("../../")
-
-	viper.AutomaticEnv()
-
-	if err := viper.ReadInConfig(); err != nil {
-		// Config file not found, use defaults
-		return &Config{}, nil
+func Load() *Config {
+	return &Config{
+		ServerPort:      getEnvAsInt("SERVER_PORT", 50051),
+		Environment:     getEnv("ENVIRONMENT", "development"),
+		UserServiceAddr: getEnv("USER_SERVICE_ADDR", "localhost:50056"),
+		Redis: RedisConfig{
+			Host:     getEnv("REDIS_HOST", "localhost"),
+			Port:     getEnvAsInt("REDIS_PORT", 6379),
+			Password: getEnv("REDIS_PASSWORD", ""),
+			DB:       getEnvAsInt("REDIS_DB", 0),
+		},
+		JWT: JWTConfig{
+			SecretKey:          getEnv("JWT_SECRET", "auth-service-secret-key-change-in-production"),
+			AccessTokenMinutes: getEnvAsInt("JWT_ACCESS_MINUTES", 15),
+			RefreshTokenHours:  getEnvAsInt("JWT_REFRESH_HOURS", 168),
+			Issuer:             getEnv("JWT_ISSUER", "auth-service"),
+		},
 	}
+}
 
-	var cfg Config
-	if err := viper.Unmarshal(&cfg); err != nil {
-		return nil, err
+func getEnv(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
 	}
+	return def
+}
 
-	return &cfg, nil
+func getEnvAsInt(key string, def int) int {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return def
+	}
+	return n
 }

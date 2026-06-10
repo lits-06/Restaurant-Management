@@ -41,4 +41,5 @@ type ListFilters struct {
 	PageSize int
 	Status   domain.UserStatus
 	Role     domain.UserRole
+	Keyword  string // search in email, username, full_name
 }

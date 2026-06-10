@@ -55,7 +55,7 @@ func (h *OrderHandler) CreateOrder(ctx context.Context, req *order.CreateOrderRe
 		})
 	}
 
-	ord, err := h.orderUseCase.CreateOrder(ctx, req.Name, req.Phone, req.Time, req.Date, req.PartySize, req.Status, itemRequests)
+	ord, err := h.orderUseCase.CreateOrder(ctx, req.TableId, req.UserId, req.Name, req.Phone, req.Notes, req.Time, req.EndTime, req.Date, req.PartySize, req.Status, itemRequests)
 	if err != nil {
 		logger.Error("Failed to create order", zap.Error(err))
 		return &order.CreateOrderResponse{Success: false, Message: err.Error()}, nil
@@ -103,7 +103,7 @@ func (h *OrderHandler) UpdateOrder(ctx context.Context, req *order.UpdateOrderRe
 		}
 	}
 
-	ord, err := h.orderUseCase.UpdateOrder(ctx, req.OrderId, req.Name, req.Phone, req.Time, req.Date, req.PartySize, req.Status, itemRequests)
+	ord, err := h.orderUseCase.UpdateOrder(ctx, req.OrderId, req.TableId, req.Name, req.Phone, req.Notes, req.Time, req.EndTime, req.Date, req.PartySize, req.Status, itemRequests)
 	if err != nil {
 		if errors.Is(err, domain.ErrOrderNotFound) {
 			return &order.UpdateOrderResponse{Success: false, Message: "order not found"}, nil
@@ -169,7 +169,7 @@ func (h *OrderHandler) ListOrders(ctx context.Context, req *order.ListOrdersRequ
 		pageSize = 20
 	}
 
-	orders, total, err := h.orderUseCase.ListOrders(ctx, page, pageSize, domain.OrderStatus(req.Status), req.Keyword)
+	orders, total, err := h.orderUseCase.ListOrders(ctx, page, pageSize, domain.OrderStatus(req.Status), req.Keyword, req.UserId)
 	if err != nil {
 		logger.Error("Failed to list orders", zap.Error(err))
 		return &order.ListOrdersResponse{Success: false, Message: err.Error()}, nil
@@ -259,16 +259,58 @@ func convertOrderToProto(ord *domain.Order) *order.Order {
 		items[i] = convertOrderItemToProto(item)
 	}
 
-	return &order.Order{
+	proto := &order.Order{
 		OrderId:    ord.OrderID,
+		TableId:    ord.TableID,
+		UserId:     ord.UserID,
 		Name:       ord.Name,
 		Phone:      ord.Phone,
+		Notes:      ord.Notes,
 		Time:       timestamppb.New(ord.Time),
 		PartySize:  ord.PartySize,
 		Status:     string(ord.Status),
 		TotalPrice: int32(ord.Total),
 		Items:      items,
 	}
+	if !ord.EndTime.IsZero() {
+		proto.EndTime = timestamppb.New(ord.EndTime)
+	}
+	return proto
+}
+
+// UpdateOrderItemStatus advances a single item's kitchen status.
+func (h *OrderHandler) UpdateOrderItemStatus(ctx context.Context, req *order.UpdateOrderItemStatusRequest) (*order.UpdateOrderItemStatusResponse, error) {
+	logger.Info("UpdateOrderItemStatus request",
+		zap.String("order_id", req.OrderId),
+		zap.String("item_id", req.ItemId),
+		zap.String("item_status", req.ItemStatus),
+	)
+
+	if req.OrderId == "" {
+		return &order.UpdateOrderItemStatusResponse{Success: false, Message: "order_id is required"}, nil
+	}
+	if req.ItemId == "" {
+		return &order.UpdateOrderItemStatusResponse{Success: false, Message: "item_id is required"}, nil
+	}
+
+	next := domain.ItemStatus(req.ItemStatus)
+	ord, err := h.orderUseCase.UpdateOrderItemStatus(ctx, req.OrderId, req.ItemId, next)
+	if err != nil {
+		switch {
+		case errors.Is(err, domain.ErrOrderNotFound):
+			return &order.UpdateOrderItemStatusResponse{Success: false, Message: "order not found"}, nil
+		case errors.Is(err, domain.ErrOrderItemNotFound):
+			return &order.UpdateOrderItemStatusResponse{Success: false, Message: "order item not found"}, nil
+		case errors.Is(err, domain.ErrOrderItemStatusInvalid):
+			return &order.UpdateOrderItemStatusResponse{Success: false, Message: "invalid item status"}, nil
+		case errors.Is(err, domain.ErrOrderItemInvalidStatusTransition):
+			return &order.UpdateOrderItemStatusResponse{Success: false, Message: "invalid item status transition"}, nil
+		}
+		logger.Error("Failed to update order item status", zap.Error(err))
+		return &order.UpdateOrderItemStatusResponse{Success: false, Message: err.Error()}, nil
+	}
+
+	return &order.UpdateOrderItemStatusResponse{Order: convertOrderToProto(ord), Success: true, Message: "item status updated"}, nil
 }
 
 func convertOrderItemToProto(item *domain.OrderItem) *order.OrderItem {
@@ -276,10 +318,16 @@ func convertOrderItemToProto(item *domain.OrderItem) *order.OrderItem {
 		return nil
 	}
 
+	status := string(item.ItemStatus)
+	if status == "" {
+		status = string(domain.ItemStatusPending)
+	}
+
 	return &order.OrderItem{
-		ItemId:   item.ItemID,
-		Name:     item.Name,
-		Price:    item.Price,
-		Quantity: item.Quantity,
+		ItemId:     item.ItemID,
+		Name:       item.Name,
+		Price:      item.Price,
+		Quantity:   item.Quantity,
+		ItemStatus: status,
 	}
 }

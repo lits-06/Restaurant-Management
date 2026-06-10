@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"errors"
 	"strings"
 	"time"
 )
@@ -10,11 +9,11 @@ import (
 type UserRole string
 
 const (
-	RoleAdmin   UserRole = "ADMIN"
+	RoleUser    UserRole = "USER"    // customer
 	RoleManager UserRole = "MANAGER"
-	RoleWaiter  UserRole = "WAITER"
 	RoleChef    UserRole = "CHEF"
-	RoleCashier UserRole = "CASHIER"
+	RoleWaiter  UserRole = "WAITER"
+	RoleAdmin   UserRole = "ADMIN"
 )
 
 // UserStatus represents the status of a user account
@@ -220,7 +219,7 @@ func isValidEmail(email string) bool {
 
 func isValidRole(role UserRole) bool {
 	switch role {
-	case RoleAdmin, RoleManager, RoleWaiter, RoleChef, RoleCashier:
+	case RoleUser, RoleManager, RoleChef, RoleWaiter, RoleAdmin:
 		return true
 	default:
 		return false

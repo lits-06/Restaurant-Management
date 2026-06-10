@@ -24,8 +24,10 @@ var (
 	ErrCannotRemoveLastRole = errors.New("cannot remove last role from user")
 
 	// User not found
-	ErrUserNotFound      = errors.New("user not found")
-	ErrUserAlreadyExists = errors.New("user already exists")
+	ErrUserNotFound        = errors.New("user not found")
+	ErrUserAlreadyExists   = errors.New("user already exists")
+	ErrInvalidCredentials  = errors.New("invalid credentials")
+	ErrAccountSuspended    = errors.New("account is suspended")
 
 	// Email/Username uniqueness
 	ErrEmailAlreadyExists    = errors.New("email already exists")

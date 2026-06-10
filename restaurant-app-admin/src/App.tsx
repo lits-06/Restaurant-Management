@@ -1,18 +1,18 @@
 import React, { useState } from 'react';
 import Sidebar from './components/Sidebar';
 import Footer from './components/Footer';
-
-// Import trang AnalyticsOverview nguyên vẹn của bạn
 import AnalyticsOverview from './pages/AnalyticsOverview';
 import MenuManagement from './pages/MenuManagement';
 import OrdersManagement from './pages/OrdersManagement';
 import StaffManagement from './pages/StaffManagement';
 import WeeklyScheduler from './pages/WeeklyScheduler';
+import LoginPage from './pages/Login';
+import { useAdminAuthStore } from './store/adminAuthStore';
+import { authApi } from './services/api';
 
 const App: React.FC = () => {
-  // Sidebar chỉ quản lý việc chuyển đổi tab ở đây
+  const { user, clearAuth, refreshToken } = useAdminAuthStore();
   const [activeTab, setActiveTab] = useState<string>('Dashboard');
-
   const [staffView, setStaffView] = useState<'management' | 'scheduler'>('management');
 
   const handleSetActiveTab = (tab: string) => {
@@ -20,16 +20,32 @@ const App: React.FC = () => {
     setActiveTab(tab);
   };
 
+  const handleLogout = async () => {
+    if (refreshToken) {
+      try {
+        await authApi.logout(refreshToken);
+      } catch {
+        // ignore
+      }
+    }
+    clearAuth();
+  };
+
+  if (!user) {
+    return <LoginPage onSuccess={() => {}} />;
+  }
+
   return (
     <div className="bg-[#f8f9fa] text-[#191c1d] font-sans overflow-x-hidden min-h-screen">
-      {/* Sidebar quản lý điều hướng */}
-      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
+      <Sidebar
+        activeTab={activeTab}
+        setActiveTab={handleSetActiveTab}
+        user={user}
+        onLogout={handleLogout}
+      />
 
-      {/* Khu vực hiển thị nội dung các trang */}
       <main className="ml-64 min-h-screen p-10 flex flex-col justify-between">
         <div className="flex-grow">
-          
-          {/* TRANG ANALYTICS OVERVIEW GIỮ NGUYÊN VẸN, TỰ QUẢN LÝ STATE */}
           <div className={activeTab === 'Dashboard' ? 'block' : 'hidden'}>
             <AnalyticsOverview />
           </div>
@@ -39,25 +55,17 @@ const App: React.FC = () => {
           <div className={activeTab === 'Orders' ? 'block' : 'hidden'}>
             <OrdersManagement />
           </div>
-          {/* Staff section: 2 sub-views, dùng visibility để giữ state */}
           {activeTab === 'Staff' && (
             <>
               <div className={staffView === 'management' ? 'block' : 'hidden'}>
-                <StaffManagement
-                  onNavigateToScheduler={() => setStaffView('scheduler')}
-                />
+                <StaffManagement onNavigateToScheduler={() => setStaffView('scheduler')} />
               </div>
               <div className={staffView === 'scheduler' ? 'block' : 'hidden'}>
-                <WeeklyScheduler
-                  onBack={() => setStaffView('management')}
-                />
+                <WeeklyScheduler onBack={() => setStaffView('management')} />
               </div>
             </>
           )}
-
         </div>
-
-        {/* Footer chung nằm dưới cùng */}
         <Footer />
       </main>
     </div>

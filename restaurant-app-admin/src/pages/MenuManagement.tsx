@@ -20,8 +20,20 @@ const emptyDishForm = {
 };
 
 const getItemId = (item: MenuItemDto) => item.item_id ?? item.itemId ?? '';
-const getImageUrl = (item: MenuItemDto) =>
-  item.image_url ?? item.imageUrl ?? 'https://www.gstatic.com/labs-code/stitch/stitch-placeholder-300x300.svg';
+const getImageUrl = (item: MenuItemDto) => {
+  const image = item.image_url ?? item.imageUrl;
+
+  if (!image) {
+    return '/images/default-food.jpg';
+  }
+
+  // nếu DB trả về assets/images/...
+  if (image.startsWith('assets/')) {
+    return image.replace('assets/', '/');
+  }
+
+  return image.startsWith('/') ? image : `/${image}`;
+};
 const mapMenuItem = (item: MenuItemDto): Dish => ({
   id: getItemId(item),
   name: item.name ?? 'Chưa đặt tên',
@@ -41,7 +53,7 @@ const MenuManagement: React.FC = () => {
   const [dishes, setDishes] = useState<Dish[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>('');
-  
+
   // Quản lý trạng thái Modal
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [modalMode, setModalMode] = useState<'add' | 'edit'>('add');
@@ -49,7 +61,8 @@ const MenuManagement: React.FC = () => {
   const [form, setForm] = useState(emptyDishForm);
   const [isSaving, setIsSaving] = useState<boolean>(false);
 
-  const categories = useMemo(() => ['Tất cả', ...Array.from(new Set(dishes.map((dish) => dish.category).filter(Boolean)))], [dishes]);
+  // const categories = useMemo(() => ['Tất cả', ...Array.from(new Set(dishes.map((dish) => dish.category).filter(Boolean)))], [dishes]);
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
 
   const filteredDishes = useMemo(() => {
     return dishes.filter((dish) => {
@@ -64,7 +77,7 @@ const MenuManagement: React.FC = () => {
     setError('');
     try {
       const response = await menuApi.listItems({ page: 1, page_size: 100, keyword: searchQuery });
-      setDishes((response.items ?? []).map(mapMenuItem).filter((item) => item.id));
+      setDishes((response.items ?? []).map((item) => mapMenuItem(item, categories)).filter((item) => item.id));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không thể tải thực đơn từ máy chủ.');
     } finally {
@@ -72,8 +85,39 @@ const MenuManagement: React.FC = () => {
     }
   };
 
+  const loadCategories = async () => {
+    try {
+      const response = await menuApi.listCategories();
+      setCategories(
+        response.categories?.map((cat) => ({
+          id: cat.category_id ?? '',
+          name: cat.name ?? 'Khác',
+        })) ?? []
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không thể tải danh mục.');
+    }
+  };
+
+  // Thêm categories vào scope hoặc truyền vào
+  const mapMenuItem = (item: MenuItemDto, cats: { id: string; name: string }[]): Dish => {
+    const catName = cats.find((c) => c.id === (item.category_id ?? item.categoryId))?.name
+      ?? item.category
+      ?? 'Khác';
+    return {
+      id: getItemId(item),
+      name: item.name ?? 'Chưa đặt tên',
+      price: item.price ?? 0,
+      description: item.description ?? '',
+      image: getImageUrl(item),
+      category: catName,
+      isVip: (item.price ?? 0) >= 1000000,
+    };
+  };
+
   useEffect(() => {
     loadMenu();
+    loadCategories();
   }, []);
 
   const handleOpenModal = (mode: 'add' | 'edit', dish?: Dish) => {
@@ -82,12 +126,12 @@ const MenuManagement: React.FC = () => {
     setForm(
       dish
         ? {
-            name: dish.name,
-            price: String(dish.price),
-            description: dish.description,
-            image: dish.image,
-            category: dish.category,
-          }
+          name: dish.name,
+          price: String(dish.price),
+          description: dish.description,
+          image: dish.image,
+          category: dish.category,
+        }
         : emptyDishForm,
     );
     setIsModalOpen(true);
@@ -152,7 +196,7 @@ const MenuManagement: React.FC = () => {
           </nav>
           <h2 className="font-serif text-5xl font-bold text-on-surface">Quản lý Thực đơn</h2>
         </div>
-        <button 
+        <button
           onClick={() => handleOpenModal('add')}
           className="bg-[#735c00] text-white text-xs font-semibold px-6 py-3 rounded-lg shadow-sm hover:shadow-md transition-all active:scale-95 flex items-center gap-2"
         >
@@ -165,16 +209,15 @@ const MenuManagement: React.FC = () => {
       <div className="flex flex-wrap justify-between items-center gap-6 my-4">
         {/* Category Tabs */}
         <div className="relative flex gap-8 border-b border-outline-variant/30 pb-px">
-          {categories.map((category) => (
+          {['Tất cả', ...categories.map((c) => c.name)].map((categoryName) => (
             <button
-              key={category}
-              onClick={() => setActiveCategory(category)}
-              className={`text-xs font-semibold py-2 relative transition-colors ${
-                activeCategory === category ? 'text-[#735c00]' : 'text-on-surface-variant hover:text-[#735c00]'
-              }`}
+              key={categoryName}
+              onClick={() => setActiveCategory(categoryName)}
+              className={`text-xs font-semibold py-2 relative transition-colors ${activeCategory === categoryName ? 'text-[#735c00]' : 'text-on-surface-variant hover:text-[#735c00]'
+                }`}
             >
-              {category}
-              {activeCategory === category && (
+              {categoryName}
+              {activeCategory === categoryName && (
                 <span className="absolute bottom-0 left-0 w-full h-[2px] bg-[#735c00]"></span>
               )}
             </button>
@@ -184,10 +227,10 @@ const MenuManagement: React.FC = () => {
         {/* Ô tìm kiếm */}
         <div className="relative">
           <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px]">search</span>
-          <input 
-            className="pl-10 pr-4 py-2 bg-[#f3f4f5] border border-outline-variant rounded-full text-sm w-64 focus:outline-none focus:border-[#735c00] transition-all" 
-            placeholder="Tìm kiếm món ăn..." 
-            type="text" 
+          <input
+            className="pl-10 pr-4 py-2 bg-[#f3f4f5] border border-outline-variant rounded-full text-sm w-64 focus:outline-none focus:border-[#735c00] transition-all"
+            placeholder="Tìm kiếm món ăn..."
+            type="text"
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
           />
@@ -208,10 +251,10 @@ const MenuManagement: React.FC = () => {
                 </div>
               )}
               <img alt={dish.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" src={dish.image} />
-              
+
               {/* Lớp phủ chứa nút Sửa/Xóa khi hover */}
               <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-4 transition-opacity duration-300">
-                <button 
+                <button
                   onClick={() => handleOpenModal('edit', dish)}
                   className="w-12 h-12 bg-white text-on-surface rounded-full flex items-center justify-center hover:bg-[#735c00] hover:text-white transition-all shadow-lg"
                 >
@@ -234,7 +277,7 @@ const MenuManagement: React.FC = () => {
         ))}
 
         {/* Nút Khung giữ chỗ Thêm Món Nhanh */}
-        <div 
+        <div
           onClick={() => handleOpenModal('add')}
           className="border-2 border-dashed border-outline-variant/50 rounded-xl flex flex-col items-center justify-center p-12 group cursor-pointer hover:border-[#735c00]/50 hover:bg-[#edeeef] transition-all"
         >
@@ -257,7 +300,7 @@ const MenuManagement: React.FC = () => {
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
-            
+
             <form className="p-8 space-y-6" onSubmit={handleSubmit}>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">

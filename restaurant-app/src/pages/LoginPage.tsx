@@ -1,0 +1,351 @@
+import React, { useState } from 'react';
+import { authApi, usersApi } from '../api/gateway.api';
+import { useAuthStore } from '../store/authStore';
+
+interface LoginPageProps {
+  onSuccess: () => void;
+}
+
+type Tab = 'login' | 'register';
+
+const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
+  const [tab, setTab] = useState<Tab>('login');
+
+  // Login state
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [loginError, setLoginError] = useState('');
+
+  // Register state
+  const [regEmail, setRegEmail] = useState('');
+  const [regUsername, setRegUsername] = useState('');
+  const [regFullName, setRegFullName] = useState('');
+  const [regPhone, setRegPhone] = useState('');
+  const [regPassword, setRegPassword] = useState('');
+  const [regConfirm, setRegConfirm] = useState('');
+  const [showRegPassword, setShowRegPassword] = useState(false);
+  const [regLoading, setRegLoading] = useState(false);
+  const [regError, setRegError] = useState('');
+  const [regSuccess, setRegSuccess] = useState('');
+
+  const { setAuth } = useAuthStore();
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError('');
+    setLoginLoading(true);
+    try {
+      const res = await authApi.login(loginEmail, loginPassword);
+      const userId = res.user_id;
+      if (!userId || !res.access_token || !res.refresh_token) {
+        throw new Error('Phản hồi máy chủ không hợp lệ.');
+      }
+      const profileRes = await usersApi.getOne(userId);
+      const u = profileRes.user;
+      setAuth(
+        {
+          user_id: userId,
+          email: u?.email || loginEmail,
+          username: u?.username || '',
+          full_name: u?.full_name || '',
+          phone: u?.phone || '',
+          roles: u?.roles || [],
+        },
+        res.access_token,
+        res.refresh_token
+      );
+      onSuccess();
+    } catch (err) {
+      setLoginError(err instanceof Error ? err.message : 'Đăng nhập thất bại.');
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setRegError('');
+    setRegSuccess('');
+    if (regPassword !== regConfirm) {
+      setRegError('Mật khẩu xác nhận không khớp.');
+      return;
+    }
+    if (regPassword.length < 8) {
+      setRegError('Mật khẩu phải có ít nhất 8 ký tự.');
+      return;
+    }
+    setRegLoading(true);
+    try {
+      await authApi.register({
+        email: regEmail,
+        username: regUsername,
+        full_name: regFullName,
+        phone: regPhone,
+        password: regPassword,
+      });
+      setRegSuccess('Đăng ký thành công! Vui lòng đăng nhập.');
+      setLoginEmail(regEmail);
+      setTimeout(() => setTab('login'), 1200);
+    } catch (err) {
+      setRegError(err instanceof Error ? err.message : 'Đăng ký thất bại.');
+    } finally {
+      setRegLoading(false);
+    }
+  };
+
+  return (
+    <div className="flex-1 flex items-center justify-center px-4 py-16 bg-background">
+      <div className="w-full max-w-md">
+        {/* Card */}
+        <div className="bg-surface-container-lowest rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.08)] border border-outline-variant/30 overflow-hidden">
+          {/* Brand */}
+          <div className="text-center pt-10 pb-6 px-8 border-b border-outline-variant/30">
+            <div className="inline-flex items-center justify-center w-14 h-14 bg-primary-container/20 rounded-full mb-4">
+              <span className="material-symbols-outlined text-primary text-3xl" style={{ fontVariationSettings: "'FILL' 1" }}>
+                restaurant_menu
+              </span>
+            </div>
+            <h1 className="font-headline-md text-2xl text-on-surface font-bold">LuxeBistro</h1>
+            <p className="text-label-sm text-on-surface-variant mt-1">Tài khoản khách hàng</p>
+          </div>
+
+          {/* Tabs */}
+          <div className="flex border-b border-outline-variant/30">
+            {(['login', 'register'] as Tab[]).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => { setTab(t); setLoginError(''); setRegError(''); setRegSuccess(''); }}
+                className={`flex-1 py-3 text-sm font-semibold transition-all ${
+                  tab === t
+                    ? 'text-primary border-b-2 border-primary bg-primary/5'
+                    : 'text-on-surface-variant hover:text-on-surface'
+                }`}
+              >
+                {t === 'login' ? 'Đăng nhập' : 'Đăng ký'}
+              </button>
+            ))}
+          </div>
+
+          <div className="p-8">
+            {/* Login Form */}
+            {tab === 'login' && (
+              <form onSubmit={handleLogin} className="space-y-5">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-on-surface-variant uppercase tracking-wider" htmlFor="l-email">
+                    Email
+                  </label>
+                  <div className="relative">
+                    <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-lg">mail</span>
+                    <input
+                      id="l-email"
+                      type="email"
+                      required
+                      placeholder="email@example.com"
+                      value={loginEmail}
+                      onChange={(e) => setLoginEmail(e.target.value)}
+                      className="w-full h-12 pl-10 pr-4 bg-surface border border-outline-variant rounded-lg text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-on-surface-variant uppercase tracking-wider" htmlFor="l-password">
+                    Mật khẩu
+                  </label>
+                  <div className="relative">
+                    <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-lg">lock</span>
+                    <input
+                      id="l-password"
+                      type={showLoginPassword ? 'text' : 'password'}
+                      required
+                      placeholder="••••••••"
+                      value={loginPassword}
+                      onChange={(e) => setLoginPassword(e.target.value)}
+                      className="w-full h-12 pl-10 pr-10 bg-surface border border-outline-variant rounded-lg text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowLoginPassword(!showLoginPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-primary transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-lg">
+                        {showLoginPassword ? 'visibility_off' : 'visibility'}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+
+                {loginError && (
+                  <p className="text-sm text-error bg-error/10 rounded-lg px-3 py-2">{loginError}</p>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={loginLoading}
+                  className="w-full h-12 bg-primary text-on-primary rounded-lg font-semibold text-sm hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-60 flex items-center justify-center gap-2"
+                >
+                  {loginLoading ? (
+                    <span className="material-symbols-outlined animate-spin text-lg">progress_activity</span>
+                  ) : (
+                    <>
+                      Đăng nhập
+                      <span className="material-symbols-outlined text-lg">login</span>
+                    </>
+                  )}
+                </button>
+
+                <p className="text-center text-sm text-on-surface-variant">
+                  Chưa có tài khoản?{' '}
+                  <button type="button" onClick={() => setTab('register')} className="text-primary font-semibold hover:underline">
+                    Đăng ký ngay
+                  </button>
+                </p>
+              </form>
+            )}
+
+            {/* Register Form */}
+            {tab === 'register' && (
+              <form onSubmit={handleRegister} className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-on-surface-variant uppercase tracking-wider" htmlFor="r-fullname">
+                      Họ và tên
+                    </label>
+                    <input
+                      id="r-fullname"
+                      type="text"
+                      required
+                      placeholder="Nguyễn Văn A"
+                      value={regFullName}
+                      onChange={(e) => setRegFullName(e.target.value)}
+                      className="w-full h-11 px-3 bg-surface border border-outline-variant rounded-lg text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-on-surface-variant uppercase tracking-wider" htmlFor="r-username">
+                      Tên đăng nhập
+                    </label>
+                    <input
+                      id="r-username"
+                      type="text"
+                      required
+                      placeholder="nguyenvana"
+                      value={regUsername}
+                      onChange={(e) => setRegUsername(e.target.value)}
+                      className="w-full h-11 px-3 bg-surface border border-outline-variant rounded-lg text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-on-surface-variant uppercase tracking-wider" htmlFor="r-email">
+                    Email
+                  </label>
+                  <input
+                    id="r-email"
+                    type="email"
+                    required
+                    placeholder="email@example.com"
+                    value={regEmail}
+                    onChange={(e) => setRegEmail(e.target.value)}
+                    className="w-full h-11 px-3 bg-surface border border-outline-variant rounded-lg text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-on-surface-variant uppercase tracking-wider" htmlFor="r-phone">
+                    Số điện thoại
+                  </label>
+                  <input
+                    id="r-phone"
+                    type="tel"
+                    placeholder="090 123 4567"
+                    value={regPhone}
+                    onChange={(e) => setRegPhone(e.target.value)}
+                    className="w-full h-11 px-3 bg-surface border border-outline-variant rounded-lg text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-on-surface-variant uppercase tracking-wider" htmlFor="r-password">
+                      Mật khẩu
+                    </label>
+                    <div className="relative">
+                      <input
+                        id="r-password"
+                        type={showRegPassword ? 'text' : 'password'}
+                        required
+                        placeholder="≥ 8 ký tự"
+                        value={regPassword}
+                        onChange={(e) => setRegPassword(e.target.value)}
+                        className="w-full h-11 pl-3 pr-9 bg-surface border border-outline-variant rounded-lg text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowRegPassword(!showRegPassword)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-primary transition-colors"
+                      >
+                        <span className="material-symbols-outlined text-base">
+                          {showRegPassword ? 'visibility_off' : 'visibility'}
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-on-surface-variant uppercase tracking-wider" htmlFor="r-confirm">
+                      Xác nhận
+                    </label>
+                    <input
+                      id="r-confirm"
+                      type="password"
+                      required
+                      placeholder="Nhập lại"
+                      value={regConfirm}
+                      onChange={(e) => setRegConfirm(e.target.value)}
+                      className="w-full h-11 px-3 bg-surface border border-outline-variant rounded-lg text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all"
+                    />
+                  </div>
+                </div>
+
+                {regError && (
+                  <p className="text-sm text-error bg-error/10 rounded-lg px-3 py-2">{regError}</p>
+                )}
+                {regSuccess && (
+                  <p className="text-sm text-[#2e7d32] bg-[#2e7d32]/10 rounded-lg px-3 py-2">{regSuccess}</p>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={regLoading}
+                  className="w-full h-12 bg-primary text-on-primary rounded-lg font-semibold text-sm hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-60 flex items-center justify-center gap-2"
+                >
+                  {regLoading ? (
+                    <span className="material-symbols-outlined animate-spin text-lg">progress_activity</span>
+                  ) : (
+                    <>
+                      Tạo tài khoản
+                      <span className="material-symbols-outlined text-lg">person_add</span>
+                    </>
+                  )}
+                </button>
+
+                <p className="text-center text-sm text-on-surface-variant">
+                  Đã có tài khoản?{' '}
+                  <button type="button" onClick={() => setTab('login')} className="text-primary font-semibold hover:underline">
+                    Đăng nhập
+                  </button>
+                </p>
+              </form>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default LoginPage;

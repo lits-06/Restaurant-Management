@@ -29,22 +29,23 @@ func NewPostgresTableRepository(db *sql.DB) (*PostgresTableRepository, error) {
 func (r *PostgresTableRepository) ensureSchema(ctx context.Context) error {
 	const query = `
 		CREATE TABLE IF NOT EXISTS restaurant_tables (
-			table_id VARCHAR(36) PRIMARY KEY,
-			table_number VARCHAR(50) NOT NULL UNIQUE,
-			capacity INTEGER NOT NULL,
-			status VARCHAR(32) NOT NULL,
-			location VARCHAR(100) NOT NULL,
-			current_order_id VARCHAR(36) NOT NULL DEFAULT '',
-			created_at TIMESTAMP NOT NULL,
-			updated_at TIMESTAMP NOT NULL,
-			CONSTRAINT chk_restaurant_tables_capacity CHECK (capacity > 0 AND capacity <= 50)
+			table_id     VARCHAR(36)  PRIMARY KEY,
+			table_number INTEGER      NOT NULL UNIQUE,
+			capacity     INTEGER      NOT NULL,
+			status       VARCHAR(32)  NOT NULL DEFAULT 'AVAILABLE',
+			created_at   TIMESTAMP    NOT NULL,
+			updated_at   TIMESTAMP    NOT NULL,
+			CONSTRAINT chk_table_number  CHECK (table_number > 0),
+			CONSTRAINT chk_capacity      CHECK (capacity > 0 AND capacity <= 50)
 		);
 
-		CREATE INDEX IF NOT EXISTS idx_restaurant_tables_status ON restaurant_tables(status);
-		CREATE INDEX IF NOT EXISTS idx_restaurant_tables_location ON restaurant_tables(location);
+		-- drop legacy column if migrating from older schema
+		ALTER TABLE restaurant_tables DROP COLUMN IF EXISTS location;
+		ALTER TABLE restaurant_tables DROP COLUMN IF EXISTS current_order_id;
+
+		CREATE INDEX IF NOT EXISTS idx_restaurant_tables_status   ON restaurant_tables(status);
 		CREATE INDEX IF NOT EXISTS idx_restaurant_tables_capacity ON restaurant_tables(capacity);
 	`
-
 	_, err := r.db.ExecContext(ctx, query)
 	return err
 }
@@ -55,28 +56,12 @@ func (r *PostgresTableRepository) Create(ctx context.Context, table *domain.Tabl
 	}
 
 	const query = `
-		INSERT INTO restaurant_tables (
-			table_id,
-			table_number,
-			capacity,
-			status,
-			location,
-			current_order_id,
-			created_at,
-			updated_at
-		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO restaurant_tables (table_id, table_number, capacity, status, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6)
 	`
-
 	_, err := r.db.ExecContext(ctx, query,
-		table.ID,
-		table.TableNumber,
-		table.Capacity,
-		string(table.Status),
-		table.Location,
-		table.CurrentOrderID,
-		table.CreatedAt,
-		table.UpdatedAt,
+		table.ID, table.TableNumber, table.Capacity, string(table.Status),
+		table.CreatedAt, table.UpdatedAt,
 	)
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -85,66 +70,23 @@ func (r *PostgresTableRepository) Create(ctx context.Context, table *domain.Tabl
 		}
 		return err
 	}
-
 	return nil
 }
 
 func (r *PostgresTableRepository) GetByID(ctx context.Context, id string) (*domain.Table, error) {
 	const query = `
-		SELECT table_id, table_number, capacity, status, location, current_order_id, created_at, updated_at
-		FROM restaurant_tables
-		WHERE table_id = $1
+		SELECT table_id, table_number, capacity, status, created_at, updated_at
+		FROM restaurant_tables WHERE table_id = $1
 	`
-
-	table := &domain.Table{}
-	var status string
-	if err := r.db.QueryRowContext(ctx, query, id).Scan(
-		&table.ID,
-		&table.TableNumber,
-		&table.Capacity,
-		&status,
-		&table.Location,
-		&table.CurrentOrderID,
-		&table.CreatedAt,
-		&table.UpdatedAt,
-	); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, domain.ErrTableNotFound
-		}
-		return nil, err
-	}
-
-	table.Status = domain.TableStatus(status)
-	return table, nil
+	return r.scanOne(r.db.QueryRowContext(ctx, query, id))
 }
 
-func (r *PostgresTableRepository) GetByTableNumber(ctx context.Context, tableNumber string) (*domain.Table, error) {
+func (r *PostgresTableRepository) GetByTableNumber(ctx context.Context, tableNumber int) (*domain.Table, error) {
 	const query = `
-		SELECT table_id, table_number, capacity, status, location, current_order_id, created_at, updated_at
-		FROM restaurant_tables
-		WHERE table_number = $1
+		SELECT table_id, table_number, capacity, status, created_at, updated_at
+		FROM restaurant_tables WHERE table_number = $1
 	`
-
-	table := &domain.Table{}
-	var status string
-	if err := r.db.QueryRowContext(ctx, query, tableNumber).Scan(
-		&table.ID,
-		&table.TableNumber,
-		&table.Capacity,
-		&status,
-		&table.Location,
-		&table.CurrentOrderID,
-		&table.CreatedAt,
-		&table.UpdatedAt,
-	); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, domain.ErrTableNotFound
-		}
-		return nil, err
-	}
-
-	table.Status = domain.TableStatus(status)
-	return table, nil
+	return r.scanOne(r.db.QueryRowContext(ctx, query, tableNumber))
 }
 
 func (r *PostgresTableRepository) Update(ctx context.Context, table *domain.Table) error {
@@ -154,24 +96,11 @@ func (r *PostgresTableRepository) Update(ctx context.Context, table *domain.Tabl
 
 	const query = `
 		UPDATE restaurant_tables
-		SET
-			table_number = $2,
-			capacity = $3,
-			status = $4,
-			location = $5,
-			current_order_id = $6,
-			updated_at = $7
+		SET table_number = $2, capacity = $3, status = $4, updated_at = $5
 		WHERE table_id = $1
 	`
-
 	result, err := r.db.ExecContext(ctx, query,
-		table.ID,
-		table.TableNumber,
-		table.Capacity,
-		string(table.Status),
-		table.Location,
-		table.CurrentOrderID,
-		table.UpdatedAt,
+		table.ID, table.TableNumber, table.Capacity, string(table.Status), table.UpdatedAt,
 	)
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -180,64 +109,47 @@ func (r *PostgresTableRepository) Update(ctx context.Context, table *domain.Tabl
 		}
 		return err
 	}
-
-	rowsAffected, err := result.RowsAffected()
+	rows, err := result.RowsAffected()
 	if err != nil {
 		return err
 	}
-	if rowsAffected == 0 {
+	if rows == 0 {
 		return domain.ErrTableNotFound
 	}
-
 	return nil
 }
 
 func (r *PostgresTableRepository) Delete(ctx context.Context, id string) error {
-	const query = `DELETE FROM restaurant_tables WHERE table_id = $1`
-
-	result, err := r.db.ExecContext(ctx, query, id)
+	result, err := r.db.ExecContext(ctx, `DELETE FROM restaurant_tables WHERE table_id = $1`, id)
 	if err != nil {
 		return err
 	}
-
-	rowsAffected, err := result.RowsAffected()
+	rows, err := result.RowsAffected()
 	if err != nil {
 		return err
 	}
-	if rowsAffected == 0 {
+	if rows == 0 {
 		return domain.ErrTableNotFound
 	}
-
 	return nil
 }
 
 func (r *PostgresTableRepository) List(ctx context.Context, filters ListFilters) ([]*domain.Table, int, error) {
-	baseQuery := `
-		SELECT table_id, table_number, capacity, status, location, current_order_id, created_at, updated_at
-		FROM restaurant_tables
-	`
-	countQuery := `SELECT COUNT(1) FROM restaurant_tables`
-
-	conditions := make([]string, 0, 2)
-	args := make([]any, 0, 4)
+	conditions := make([]string, 0, 1)
+	args := make([]any, 0, 3)
 
 	if filters.Status != "" {
 		args = append(args, string(filters.Status))
 		conditions = append(conditions, fmt.Sprintf("status = $%d", len(args)))
 	}
-	if strings.TrimSpace(filters.Location) != "" {
-		args = append(args, "%"+strings.TrimSpace(filters.Location)+"%")
-		conditions = append(conditions, fmt.Sprintf("location ILIKE $%d", len(args)))
-	}
 
+	whereClause := ""
 	if len(conditions) > 0 {
-		whereClause := " WHERE " + strings.Join(conditions, " AND ")
-		baseQuery += whereClause
-		countQuery += whereClause
+		whereClause = " WHERE " + strings.Join(conditions, " AND ")
 	}
 
 	var total int
-	if err := r.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
+	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM restaurant_tables`+whereClause, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
@@ -249,12 +161,14 @@ func (r *PostgresTableRepository) List(ctx context.Context, filters ListFilters)
 	if pageSize <= 0 {
 		pageSize = 10
 	}
-
 	offset := (page - 1) * pageSize
 	args = append(args, pageSize, offset)
-	baseQuery += fmt.Sprintf(" ORDER BY table_number ASC LIMIT $%d OFFSET $%d", len(args)-1, len(args))
 
-	rows, err := r.db.QueryContext(ctx, baseQuery, args...)
+	query := `SELECT table_id, table_number, capacity, status, created_at, updated_at FROM restaurant_tables` +
+		whereClause +
+		fmt.Sprintf(" ORDER BY table_number ASC LIMIT $%d OFFSET $%d", len(args)-1, len(args))
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -262,39 +176,30 @@ func (r *PostgresTableRepository) List(ctx context.Context, filters ListFilters)
 
 	tables := make([]*domain.Table, 0)
 	for rows.Next() {
-		table, scanErr := scanTable(rows)
-		if scanErr != nil {
-			return nil, 0, scanErr
+		t, err := scanTableRow(rows)
+		if err != nil {
+			return nil, 0, err
 		}
-		tables = append(tables, table)
+		tables = append(tables, t)
 	}
-
 	if err := rows.Err(); err != nil {
 		return nil, 0, err
 	}
-
 	return tables, total, nil
 }
 
-func (r *PostgresTableRepository) GetAvailableTables(ctx context.Context, minCapacity int, location string) ([]*domain.Table, error) {
+func (r *PostgresTableRepository) GetAvailableTables(ctx context.Context, minCapacity int) ([]*domain.Table, error) {
 	query := `
-		SELECT table_id, table_number, capacity, status, location, current_order_id, created_at, updated_at
+		SELECT table_id, table_number, capacity, status, created_at, updated_at
 		FROM restaurant_tables
 		WHERE status = $1
 	`
-
-	args := make([]any, 0, 3)
-	args = append(args, string(domain.StatusAvailable))
+	args := []any{string(domain.StatusAvailable)}
 
 	if minCapacity > 0 {
 		args = append(args, minCapacity)
 		query += fmt.Sprintf(" AND capacity >= $%d", len(args))
 	}
-	if strings.TrimSpace(location) != "" {
-		args = append(args, "%"+strings.TrimSpace(location)+"%")
-		query += fmt.Sprintf(" AND location ILIKE $%d", len(args))
-	}
-
 	query += " ORDER BY capacity ASC, table_number ASC"
 
 	rows, err := r.db.QueryContext(ctx, query, args...)
@@ -305,50 +210,45 @@ func (r *PostgresTableRepository) GetAvailableTables(ctx context.Context, minCap
 
 	tables := make([]*domain.Table, 0)
 	for rows.Next() {
-		table, scanErr := scanTable(rows)
-		if scanErr != nil {
-			return nil, scanErr
+		t, err := scanTableRow(rows)
+		if err != nil {
+			return nil, err
 		}
-		tables = append(tables, table)
+		tables = append(tables, t)
 	}
+	return tables, rows.Err()
+}
 
-	if err := rows.Err(); err != nil {
+func (r *PostgresTableRepository) ExistsByTableNumber(ctx context.Context, tableNumber int) (bool, error) {
+	var exists bool
+	err := r.db.QueryRowContext(ctx,
+		`SELECT EXISTS(SELECT 1 FROM restaurant_tables WHERE table_number = $1)`, tableNumber,
+	).Scan(&exists)
+	return exists, err
+}
+
+// scanOne wraps QueryRowContext result into a Table, mapping ErrNoRows → ErrTableNotFound.
+func (r *PostgresTableRepository) scanOne(row *sql.Row) (*domain.Table, error) {
+	t := &domain.Table{}
+	var status string
+	if err := row.Scan(&t.ID, &t.TableNumber, &t.Capacity, &status, &t.CreatedAt, &t.UpdatedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, domain.ErrTableNotFound
+		}
 		return nil, err
 	}
-
-	return tables, nil
+	t.Status = domain.TableStatus(status)
+	return t, nil
 }
 
-func (r *PostgresTableRepository) ExistsByTableNumber(ctx context.Context, tableNumber string) (bool, error) {
-	const query = `SELECT EXISTS(SELECT 1 FROM restaurant_tables WHERE table_number = $1)`
-
-	var exists bool
-	if err := r.db.QueryRowContext(ctx, query, tableNumber).Scan(&exists); err != nil {
-		return false, err
-	}
-
-	return exists, nil
-}
-
-func scanTable(scanner interface {
+func scanTableRow(scanner interface {
 	Scan(dest ...any) error
 }) (*domain.Table, error) {
-	table := &domain.Table{}
+	t := &domain.Table{}
 	var status string
-
-	if err := scanner.Scan(
-		&table.ID,
-		&table.TableNumber,
-		&table.Capacity,
-		&status,
-		&table.Location,
-		&table.CurrentOrderID,
-		&table.CreatedAt,
-		&table.UpdatedAt,
-	); err != nil {
+	if err := scanner.Scan(&t.ID, &t.TableNumber, &t.Capacity, &status, &t.CreatedAt, &t.UpdatedAt); err != nil {
 		return nil, err
 	}
-
-	table.Status = domain.TableStatus(status)
-	return table, nil
+	t.Status = domain.TableStatus(status)
+	return t, nil
 }

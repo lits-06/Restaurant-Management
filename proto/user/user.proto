@@ -6,128 +6,159 @@ option go_package = "restaurant-management/proto/user";
 
 import "google/protobuf/timestamp.proto";
 
-// User Service Definition
 service UserService {
-  rpc CreateUser(CreateUserRequest) returns (CreateUserResponse);
-  rpc GetUser(GetUserRequest) returns (GetUserResponse);
-  rpc UpdateUser(UpdateUserRequest) returns (UpdateUserResponse);
-  rpc DeleteUser(DeleteUserRequest) returns (DeleteUserResponse);
-  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
-  rpc AssignRole(AssignRoleRequest) returns (AssignRoleResponse);
-  rpc GetUserRoles(GetUserRolesRequest) returns (GetUserRolesResponse);
+  rpc CreateUser(CreateUserRequest)           returns (CreateUserResponse);
+  rpc GetUser(GetUserRequest)                 returns (GetUserResponse);
+  rpc GetUserByEmail(GetUserByEmailRequest)   returns (GetUserResponse);
+  rpc UpdateUser(UpdateUserRequest)           returns (UpdateUserResponse);
+  rpc DeleteUser(DeleteUserRequest)           returns (DeleteUserResponse);
+  rpc ListUsers(ListUsersRequest)             returns (ListUsersResponse);
+  rpc AssignRole(AssignRoleRequest)           returns (AssignRoleResponse);
+  rpc GetUserRoles(GetUserRolesRequest)       returns (GetUserRolesResponse);
+  rpc ChangePassword(ChangePasswordRequest)     returns (ChangePasswordResponse);
+  rpc VerifyCredentials(VerifyCredentialsRequest) returns (VerifyCredentialsResponse);
 }
 
-// Enums
 enum UserRole {
   ROLE_UNKNOWN = 0;
-  ROLE_ADMIN = 1;
-  ROLE_MANAGER = 2;
-  ROLE_WAITER = 3;
-  ROLE_CHEF = 4;
-  ROLE_CASHIER = 5;
+  ROLE_USER    = 1; // customer — can book tables, view own orders
+  ROLE_MANAGER = 2; // handles walk-in orders, updates order status
+  ROLE_CHEF    = 3; // views order items, marks items as ready
+  ROLE_WAITER  = 4; // serves food, notified when items are ready
+  ROLE_ADMIN   = 5; // full access: dashboard, menu, users, orders, tables
 }
 
 enum UserStatus {
-  STATUS_UNKNOWN = 0;
-  STATUS_ACTIVE = 1;
-  STATUS_INACTIVE = 2;
+  STATUS_UNKNOWN   = 0;
+  STATUS_ACTIVE    = 1;
+  STATUS_INACTIVE  = 2;
   STATUS_SUSPENDED = 3;
 }
 
-// Messages
 message User {
-  string user_id = 1;
-  string email = 2;
-  string username = 3;
-  string full_name = 4;
-  string phone = 5;
-  repeated UserRole roles = 6;
-  UserStatus status = 7;
+  string   user_id    = 1;
+  string   email      = 2;
+  string   username   = 3;
+  string   full_name  = 4;
+  string   phone      = 5;
+  repeated UserRole   roles  = 6;
+  UserStatus          status = 7;
   google.protobuf.Timestamp created_at = 8;
   google.protobuf.Timestamp updated_at = 9;
 }
 
+// ── CreateUser ────────────────────────────────────────────────
 message CreateUserRequest {
-  string email = 1;
-  string username = 2;
-  string full_name = 3;
-  string phone = 4;
-  string password = 5;
-  repeated UserRole roles = 6;
+  string   email     = 1;
+  string   username  = 2;
+  string   full_name = 3;
+  string   phone     = 4;
+  string   password  = 5;
+  repeated UserRole roles = 6; // defaults to [ROLE_USER] if empty
 }
-
 message CreateUserResponse {
-  User user = 1;
-  bool success = 2;
+  User   user    = 1;
+  bool   success = 2;
   string message = 3;
 }
 
+// ── GetUser (by ID) ───────────────────────────────────────────
 message GetUserRequest {
   string user_id = 1;
 }
-
 message GetUserResponse {
-  User user = 1;
-  bool success = 2;
+  User   user    = 1;
+  bool   success = 2;
   string message = 3;
 }
 
+// ── GetUserByEmail ────────────────────────────────────────────
+message GetUserByEmailRequest {
+  string email = 1;
+}
+// reuses GetUserResponse
+
+// ── UpdateUser ────────────────────────────────────────────────
 message UpdateUserRequest {
-  string user_id = 1;
-  string email = 2;
-  string username = 3;
-  string full_name = 4;
-  string phone = 5;
-  UserStatus status = 6;
+  string     user_id   = 1;
+  string     email     = 2;
+  string     username  = 3;
+  string     full_name = 4;
+  string     phone     = 5;
+  UserStatus status    = 6;
 }
-
 message UpdateUserResponse {
-  User user = 1;
-  bool success = 2;
+  User   user    = 1;
+  bool   success = 2;
   string message = 3;
 }
 
+// ── DeleteUser ────────────────────────────────────────────────
 message DeleteUserRequest {
   string user_id = 1;
 }
-
 message DeleteUserResponse {
-  bool success = 1;
+  bool   success = 1;
   string message = 2;
 }
 
+// ── ListUsers ─────────────────────────────────────────────────
 message ListUsersRequest {
-  int32 page = 1;
-  int32 page_size = 2;
-  UserStatus status = 3;
-  UserRole role = 4;
+  int32      page      = 1;
+  int32      page_size = 2;
+  UserStatus status    = 3; // optional filter
+  UserRole   role      = 4; // optional filter
+  string     keyword   = 5; // search in email / username / full_name
 }
-
 message ListUsersResponse {
-  repeated User users = 1;
-  int32 total = 2;
-  int32 page = 3;
-  int32 page_size = 4;
-  bool success = 5;
-  string message = 6;
+  repeated User users     = 1;
+  int32         total     = 2;
+  int32         page      = 3;
+  int32         page_size = 4;
+  bool          success   = 5;
+  string        message   = 6;
 }
 
+// ── AssignRole ────────────────────────────────────────────────
 message AssignRoleRequest {
-  string user_id = 1;
-  repeated UserRole roles = 2;
+  string   user_id = 1;
+  repeated UserRole roles = 2; // replaces existing roles entirely
 }
-
 message AssignRoleResponse {
-  bool success = 1;
+  bool   success = 1;
   string message = 2;
 }
 
+// ── GetUserRoles ──────────────────────────────────────────────
 message GetUserRolesRequest {
   string user_id = 1;
 }
-
 message GetUserRolesResponse {
-  repeated UserRole roles = 1;
-  bool success = 2;
-  string message = 3;
+  repeated UserRole roles   = 1;
+  bool              success = 2;
+  string            message = 3;
+}
+
+// ── VerifyCredentials ─────────────────────────────────────────
+message VerifyCredentialsRequest {
+  string email    = 1;
+  string password = 2; // plain text
+}
+message VerifyCredentialsResponse {
+  bool              success = 1;
+  string            message = 2;
+  string            user_id = 3;
+  string            email   = 4;
+  repeated UserRole roles   = 5;
+}
+
+// ── ChangePassword ────────────────────────────────────────────
+message ChangePasswordRequest {
+  string user_id      = 1;
+  string old_password = 2;
+  string new_password = 3;
+}
+message ChangePasswordResponse {
+  bool   success = 1;
+  string message = 2;
 }

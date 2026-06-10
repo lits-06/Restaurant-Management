@@ -1,3 +1,5 @@
+import { useAdminAuthStore } from '../store/adminAuthStore';
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080';
 
 type QueryValue = string | number | boolean | undefined | null;
@@ -15,10 +17,12 @@ const buildPath = (path: string, query?: Record<string, QueryValue>) => {
 };
 
 const request = async <T>(path: string, init?: RequestInit, query?: Record<string, QueryValue>): Promise<T> => {
+  const token = useAdminAuthStore.getState().accessToken;
   const response = await fetch(buildPath(path, query), {
     ...init,
     headers: {
       'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init?.headers ?? {}),
     },
   });
@@ -88,6 +92,35 @@ export interface StaffDto {
   contact?: string;
   avatar?: string;
 }
+
+export interface UserDto {
+  user_id?: string;
+  email?: string;
+  username?: string;
+  full_name?: string;
+  phone?: string;
+  status?: string;
+  roles?: string[];
+}
+
+export const authApi = {
+  login: (email: string, password: string) =>
+    request<{ success?: boolean; access_token?: string; refresh_token?: string; user_id?: string; message?: string }>(
+      '/auth/login',
+      { method: 'POST', body: JSON.stringify({ email, password }) }
+    ),
+
+  logout: (refreshToken: string) =>
+    request<{ success?: boolean; message?: string }>(
+      '/auth/logout',
+      { method: 'POST', body: JSON.stringify({ refresh_token: refreshToken }) }
+    ),
+};
+
+export const usersApi = {
+  getOne: (id: string) =>
+    request<{ user?: UserDto; success?: boolean; message?: string }>(`/users/${id}`),
+};
 
 export const menuApi = {
   listItems: (query?: { page?: number; page_size?: number; category_id?: string; keyword?: string }) =>

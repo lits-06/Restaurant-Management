@@ -57,7 +57,7 @@ func (uc *UserUseCase) CreateUser(ctx context.Context, email, username, fullName
 
 	// Set default role if none provided
 	if len(roles) == 0 {
-		roles = []domain.UserRole{domain.RoleWaiter} // Default role
+		roles = []domain.UserRole{domain.RoleUser}
 	}
 
 	// Create user entity
@@ -166,12 +166,13 @@ func (uc *UserUseCase) DeleteUser(ctx context.Context, userID string) error {
 }
 
 // ListUsers retrieves users with filters and pagination
-func (uc *UserUseCase) ListUsers(ctx context.Context, page, pageSize int, status domain.UserStatus, role domain.UserRole) ([]*domain.User, int, error) {
+func (uc *UserUseCase) ListUsers(ctx context.Context, page, pageSize int, status domain.UserStatus, role domain.UserRole, keyword string) ([]*domain.User, int, error) {
 	filters := repository.ListFilters{
 		Page:     page,
 		PageSize: pageSize,
 		Status:   status,
 		Role:     role,
+		Keyword:  keyword,
 	}
 
 	users, total, err := uc.userRepo.List(ctx, filters)
@@ -195,7 +196,7 @@ func (uc *UserUseCase) AssignRoles(ctx context.Context, userID string, roles []d
 	// Validate roles
 	for _, role := range roles {
 		switch role {
-		case domain.RoleAdmin, domain.RoleManager, domain.RoleWaiter, domain.RoleChef, domain.RoleCashier:
+		case domain.RoleUser, domain.RoleManager, domain.RoleChef, domain.RoleWaiter, domain.RoleAdmin:
 			// Valid role
 		default:
 			return domain.ErrInvalidRole
@@ -231,6 +232,25 @@ func (uc *UserUseCase) GetUserRoles(ctx context.Context, userID string) ([]domai
 	}
 
 	return user.Roles, nil
+}
+
+// VerifyCredentials verifies email + password and returns the user if valid.
+// Called by auth-service during Login.
+func (uc *UserUseCase) VerifyCredentials(ctx context.Context, email, password string) (*domain.User, error) {
+	if email == "" {
+		return nil, domain.ErrInvalidEmail
+	}
+	user, err := uc.userRepo.GetByEmail(ctx, email)
+	if err != nil {
+		return nil, domain.ErrInvalidCredentials // mask not-found
+	}
+	if err := uc.passwordHasher.Compare(user.Password, password); err != nil {
+		return nil, domain.ErrInvalidCredentials
+	}
+	if user.Status == domain.StatusSuspended || user.Status == domain.StatusInactive {
+		return nil, domain.ErrAccountSuspended
+	}
+	return user, nil
 }
 
 // ChangePassword changes a user's password

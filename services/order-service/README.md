@@ -1,403 +1,275 @@
 # Order Service
 
-Order Service quản lý đơn hàng cho hệ thống nhà hàng với inter-service communication.
+Microservice quản lý đơn đặt bàn (reservation + order) cho hệ thống nhà hàng.
 
-## 🎯 Features
+**Port:** `50055` | **Protocol:** gRPC | **DB:** PostgreSQL (`restaurant_db`)
 
-### Order Management
-- ✅ Create orders with menu items
-- ✅ Update order details (items, discount, notes)
-- ✅ Cancel orders
-- ✅ List orders with filters (status, table, date range)
-- ✅ Update order status (7-state workflow)
-- ✅ Add/remove items from orders
-- ✅ Get orders by table
-- ✅ Automatic total calculation (subtotal + tax - discount)
+---
 
-### Order Status Workflow
-- **PENDING** → CONFIRMED → PREPARING → READY → SERVED → COMPLETED
-- **Any status** → CANCELLED (except COMPLETED)
+## Trách nhiệm
 
-### Inter-Service Integration
-- ✅ Menu Service - Validate menu items and prices
-- ✅ Table Service - Validate table availability, update table status
-- ✅ User Service - Validate waiter
+- Tạo và quản lý đơn đặt bàn (tên, SĐT, thời gian, số người, ghi chú, món ăn)
+- **Tự động gán bàn** khi khách không chỉ định bàn (gọi table-service + kiểm tra xung đột giờ)
+- Validate món ăn và lấy giá qua menu-service gRPC
+- Theo dõi trạng thái order: Pending → Confirmed → Completed (hoặc Cancelled)
 
-### Business Rules
-- Orders must have at least one item
-- Only pending/confirmed orders can be modified
-- Completed orders cannot be cancelled
-- Table is marked as occupied when order is created
-- Table is marked as available when order is completed/cancelled
-- Tax is calculated as 10% of subtotal
-- Total = Subtotal + Tax - Discount
+---
 
-## 🏗️ Architecture
+## Order Entity
 
-Follows **Clean Architecture** with **Inter-Service Communication**:
-
-```
-cmd/server/          # Application entry point + gRPC clients
-internal/
-  ├── domain/        # Business entities (Order, OrderItem)
-  ├── repository/    # Data access interfaces + in-memory impl
-  ├── usecase/       # Business logic + service client interfaces
-  └── delivery/grpc/ # gRPC handlers
-pkg/config/          # Configuration
-```
-
-### Layers
-
-1. **Domain Layer** (`internal/domain/`)
-   - `order.go` - Order entity with 7 statuses
-   - `order_item.go` - OrderItem entity
-   - `errors.go` - Domain-specific errors
-   - Zero external dependencies
-
-2. **Repository Layer** (`internal/repository/`)
-   - `repository.go` - Repository interface
-   - `order_memory.go` - In-memory repository with table index
-   - Thread-safe with RWMutex
-   - Sorted results by created_at
-
-3. **UseCase Layer** (`internal/usecase/`)
-   - `order_usecase.go` - Business logic orchestration
-   - 11 operations total
-   - Service client interfaces for Menu, Table, User
-   - Inter-service validation and communication
-
-4. **Delivery Layer** (`internal/delivery/grpc/`)
-   - `order_handler.go` - gRPC handlers
-   - 9 RPC methods
-   - Proto ↔ Domain conversion
-
-5. **gRPC Clients** (`cmd/server/main.go`)
-   - Menu Service client
-   - Table Service client
-   - User Service client
-   - Validation helpers
-
-## 🚀 Running the Service
-
-### Prerequisites
-
-**Required Services:**
-- Menu Service (localhost:50054)
-- Table Service (localhost:50053)
-- User Service (localhost:50052)
-
-### Local Development
-
-```bash
-# From project root
-cd services/order-service
-
-# Run service
-go run cmd/server/main.go
-
-# Service will start on port 50055
-```
-
-### Docker
-
-```bash
-# Build image
-docker build -t order-service -f services/order-service/Dockerfile .
-
-# Run container
-docker run -p 50055:50055 \
-  -e MENU_SERVICE_ADDR=menu-service:50054 \
-  -e TABLE_SERVICE_ADDR=table-service:50053 \
-  -e USER_SERVICE_ADDR=user-service:50052 \
-  order-service
-```
-
-### Docker Compose
-
-```bash
-# From project root
-docker-compose up order-service
-```
-
-## 📡 gRPC API
-
-### CreateOrder
-```bash
-grpcurl -plaintext -d '{
-  "table_id": "TABLE_ID",
-  "waiter_id": "WAITER_ID",
-  "items": [
-    {"menu_item_id": "ITEM_ID_1", "quantity": 2, "notes": "No onions"},
-    {"menu_item_id": "ITEM_ID_2", "quantity": 1}
-  ],
-  "notes": "Customer prefers window seat"
-}' localhost:50055 order.OrderService/CreateOrder
-```
-
-### GetOrder
-```bash
-grpcurl -plaintext -d '{
-  "order_id": "ORDER_ID"
-}' localhost:50055 order.OrderService/GetOrder
-```
-
-### UpdateOrder
-```bash
-grpcurl -plaintext -d '{
-  "order_id": "ORDER_ID",
-  "discount": 10000,
-  "notes": "Updated notes"
-}' localhost:50055 order.OrderService/UpdateOrder
-```
-
-### CancelOrder
-```bash
-grpcurl -plaintext -d '{
-  "order_id": "ORDER_ID",
-  "reason": "Customer requested cancellation"
-}' localhost:50055 order.OrderService/CancelOrder
-```
-
-### ListOrders
-```bash
-# List all orders
-grpcurl -plaintext -d '{
-  "page": 1,
-  "page_size": 10
-}' localhost:50055 order.OrderService/ListOrders
-
-# Filter by status
-grpcurl -plaintext -d '{
-  "page": 1,
-  "page_size": 10,
-  "status": "STATUS_PREPARING"
-}' localhost:50055 order.OrderService/ListOrders
-
-# Filter by table
-grpcurl -plaintext -d '{
-  "table_id": "TABLE_ID",
-  "status": "STATUS_PENDING"
-}' localhost:50055 order.OrderService/ListOrders
-```
-
-### UpdateOrderStatus
-```bash
-# Confirm order
-grpcurl -plaintext -d '{
-  "order_id": "ORDER_ID",
-  "status": "STATUS_CONFIRMED"
-}' localhost:50055 order.OrderService/UpdateOrderStatus
-
-# Mark as preparing
-grpcurl -plaintext -d '{
-  "order_id": "ORDER_ID",
-  "status": "STATUS_PREPARING"
-}' localhost:50055 order.OrderService/UpdateOrderStatus
-
-# Mark as ready
-grpcurl -plaintext -d '{
-  "order_id": "ORDER_ID",
-  "status": "STATUS_READY"
-}' localhost:50055 order.OrderService/UpdateOrderStatus
-
-# Complete order
-grpcurl -plaintext -d '{
-  "order_id": "ORDER_ID",
-  "status": "STATUS_COMPLETED"
-}' localhost:50055 order.OrderService/UpdateOrderStatus
-```
-
-### AddOrderItem
-```bash
-grpcurl -plaintext -d '{
-  "order_id": "ORDER_ID",
-  "item": {
-    "menu_item_id": "ITEM_ID",
-    "quantity": 1,
-    "notes": "Extra spicy"
-  }
-}' localhost:50055 order.OrderService/AddOrderItem
-```
-
-### RemoveOrderItem
-```bash
-grpcurl -plaintext -d '{
-  "order_id": "ORDER_ID",
-  "item_id": "ITEM_ID"
-}' localhost:50055 order.OrderService/RemoveOrderItem
-```
-
-### GetOrdersByTable
-```bash
-grpcurl -plaintext -d '{
-  "table_id": "TABLE_ID",
-  "status": "STATUS_PENDING"
-}' localhost:50055 order.OrderService/GetOrdersByTable
-```
-
-## 🔧 Configuration
-
-Environment variables:
-
-```bash
-GRPC_PORT=50055                           # gRPC server port (default: 50055)
-LOG_LEVEL=info                            # Logging level (default: info)
-MENU_SERVICE_ADDR=localhost:50054         # Menu service address
-TABLE_SERVICE_ADDR=localhost:50053        # Table service address
-USER_SERVICE_ADDR=localhost:50052         # User service address
-```
-
-## 📊 Data Models
-
-### Order
-```go
-type Order struct {
-    OrderID   string
-    TableID   string
-    WaiterID  string
-    Items     []*OrderItem
-    Subtotal  float64
-    Tax       float64      // 10% of subtotal
-    Discount  float64
-    Total     float64      // Subtotal + Tax - Discount
-    Status    OrderStatus
-    Notes     string
-    CreatedAt time.Time
-    UpdatedAt time.Time
-}
-```
+| Field | Type | Ghi chú |
+|-------|------|---------|
+| `order_id` | string | UUID, DB-generated |
+| `table_id` | string | Auto-assigned nếu không truyền vào |
+| `name` | string | Tên khách hàng (bắt buộc) |
+| `phone` | string | SĐT khách hàng (bắt buộc) |
+| `notes` | string | Ghi chú đặc biệt (dị ứng, yêu cầu ghế…) — luôn overwrite khi update |
+| `time` | timestamp | Giờ bắt đầu |
+| `end_time` | timestamp | Giờ kết thúc |
+| `party_size` | int32 | Số người (bắt buộc, > 0) |
+| `status` | string | Pending / Confirmed / Completed / Cancelled |
+| `total` | float64 | Tổng tiền (sum of items) |
+| `items` | OrderItem[] | Danh sách món kèm số lượng |
 
 ### OrderItem
-```go
-type OrderItem struct {
-    ItemID       string
-    MenuItemID   string
-    MenuItemName string
-    Quantity     int32
-    UnitPrice    float64
-    Subtotal     float64  // UnitPrice * Quantity
-    Notes        string
-    Status       OrderStatus
+
+| Field | Ghi chú |
+|-------|---------|
+| `item_id` | UUID của order item |
+| `name` | Tên món (lấy từ menu lúc tạo) |
+| `price` | Giá tại thời điểm tạo order |
+| `category` | Category của món |
+| `image_url` | URL ảnh |
+| `quantity` | Số lượng |
+
+---
+
+## Status workflow
+
+```
+Pending → Confirmed → Completed
+   ↓           ↓
+  Cancelled  Cancelled
+```
+
+- `Pending`: mới tạo
+- `Confirmed`: admin xác nhận
+- `Completed`: order hoàn tất
+- `Cancelled`: từ Pending hoặc Confirmed (không thể cancel Completed)
+
+---
+
+## 9 RPCs
+
+### `CreateOrder`
+
+```json
+Request:
+{
+  "name": "Nguyen Van A",
+  "phone": "0901234567",
+  "date": "2026-06-15",
+  "time": "19:00",
+  "end_time": "21:00",
+  "party_size": 4,
+  "notes": "dị ứng hải sản, cần ghế cao cho trẻ em",
+  "table_id": "",          // optional — bỏ trống để auto-assign
+  "items": [{ "item_id": "UUID", "quantity": 2 }]
 }
 ```
 
-### OrderStatus
-- `STATUS_UNKNOWN` (0)
-- `STATUS_PENDING` (1) - Order created
-- `STATUS_CONFIRMED` (2) - Order confirmed by staff
-- `STATUS_PREPARING` (3) - Kitchen is preparing
-- `STATUS_READY` (4) - Order ready for serving
-- `STATUS_SERVED` (5) - Order served to customer
-- `STATUS_COMPLETED` (6) - Order completed and paid
-- `STATUS_CANCELLED` (7) - Order cancelled
+**Nếu `table_id` bỏ trống** → auto-assign:
+1. Gọi `table-service.GetAvailableTables(min_capacity=party_size)` → bàn AVAILABLE ≥ party_size, sorted capacity ASC
+2. Query `orders` DB: bàn nào trùng khung giờ `[time, end_time)` với status != Cancelled
+3. Gán bàn nhỏ nhất không bị xung đột (best-fit)
+4. Trả lỗi `ErrNoTableAvailable` nếu không còn bàn phù hợp
 
-## 🔄 Status Transitions
+**Nếu `TABLE_SERVICE_ADDR` không được set** → auto-assign bị tắt, `table_id` bắt buộc.
 
+### `GetOrder`
 ```
-PENDING → CONFIRMED → PREPARING → READY → SERVED → COMPLETED
-   ↓          ↓           ↓          ↓        ↓
-   └──────────┴───────────┴──────────┴────────┴─→ CANCELLED
+Request:  { order_id: string }
+Response: { order: Order, success: bool, message: string }
 ```
 
-**Rules:**
-- PENDING can go to CONFIRMED or CANCELLED
-- CONFIRMED can go to PREPARING or CANCELLED
-- PREPARING can go to READY or CANCELLED
-- READY can go to SERVED or CANCELLED
-- SERVED can go to COMPLETED or CANCELLED
-- COMPLETED can only go to CANCELLED (refund scenario)
-- CANCELLED is final
+### `UpdateOrder`
+```
+Request:  { order_id, name, phone, date, time, end_time, party_size, table_id, notes, items }
+Response: { order: Order, success: bool, message: string }
+```
+Chỉ update Pending/Confirmed orders. `notes` luôn được overwrite (truyền rỗng = xóa notes).
 
-## 🧪 Testing
+### `DeleteOrder`
+```
+Request:  { order_id: string }
+Response: { success: bool, message: string }
+```
+
+### `CancelOrder`
+```
+Request:  { order_id: string, reason: string }
+Response: { success: bool, message: string }
+```
+
+### `ListOrders`
+```
+Request:  { page: int32, page_size: int32, status: string, keyword: string }
+Response: { orders: []Order, total, page, page_size, success, message }
+```
+Filter theo status và/hoặc keyword (tên, SĐT).
+
+### `UpdateOrderStatus`
+```
+Request:  { order_id: string, status: string }
+Response: { order: Order, success: bool, message: string }
+```
+
+### `AddOrderItem`
+```
+Request:  { order_id: string, item: { item_id, quantity } }
+Response: { order: Order, success: bool, message: string }
+```
+Validate item qua menu-service. Chỉ áp dụng cho Pending/Confirmed orders.
+
+### `RemoveOrderItem`
+```
+Request:  { order_id: string, item_id: string }
+Response: { order: Order, success: bool, message: string }
+```
+
+---
+
+## Database
+
+```sql
+CREATE TABLE orders (
+    order_id   VARCHAR(36) PRIMARY KEY,
+    table_id   VARCHAR(36) NOT NULL DEFAULT '',
+    name       VARCHAR(255) NOT NULL,
+    phone      VARCHAR(50) NOT NULL,
+    notes      TEXT NOT NULL DEFAULT '',
+    time       TIMESTAMP NOT NULL,
+    end_time   TIMESTAMP,
+    party_size INTEGER NOT NULL,
+    status     VARCHAR(32) NOT NULL DEFAULT 'Pending',
+    total      NUMERIC(10,2) NOT NULL DEFAULT 0,
+    created_at TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP NOT NULL
+);
+
+CREATE TABLE order_items (
+    item_id    VARCHAR(36) PRIMARY KEY,
+    order_id   VARCHAR(36) NOT NULL REFERENCES orders(order_id) ON DELETE CASCADE,
+    name       VARCHAR(255) NOT NULL,
+    price      NUMERIC(10,2) NOT NULL,
+    category   VARCHAR(100) NOT NULL DEFAULT '',
+    image_url  TEXT NOT NULL DEFAULT '',
+    quantity   INTEGER NOT NULL
+);
+```
+
+Schema auto-created on startup (`ensureSchema`).
+
+---
+
+## Inter-service communication
+
+```
+order-service (50055)
+├── → menu-service (50054)
+│   └── GetMenuItem — validate item, lấy name/price/category/image
+└── → table-service (50053)  [optional — requires TABLE_SERVICE_ADDR]
+    └── GetAvailableTables(min_capacity) — danh sách bàn AVAILABLE để auto-assign
+```
+
+**Adapter pattern:** `tableAdapter` và `menuAdapter` trong `cmd/server/main.go` implements các interface trong `usecase` layer.
+
+---
+
+## Cấu trúc thư mục
+
+```
+services/order-service/
+├── cmd/server/main.go           # Entry point — wires adapters + gRPC server
+├── internal/
+│   ├── domain/
+│   │   ├── order.go             # Order entity, status workflow, validation
+│   │   ├── order_item.go        # OrderItem entity
+│   │   └── errors.go            # Domain errors (ErrNoTableAvailable, ErrTableRequired…)
+│   ├── repository/
+│   │   ├── repository.go        # OrderRepository interface + GetOccupiedTableIDs
+│   │   └── order_postgres.go    # PostgreSQL implementation
+│   ├── usecase/
+│   │   └── order_usecase.go     # Business logic, autoAssignTable, TableServiceClient interface
+│   └── delivery/grpc/
+│       └── order_handler.go     # gRPC handlers, proto ↔ domain mapping
+└── pkg/config/config.go
+```
+
+---
+
+## Configuration
+
+| Env var | Default | Mô tả |
+|---------|---------|-------|
+| `GRPC_PORT` | `50055` | gRPC server port |
+| `DATABASE_HOST` | `localhost` | PostgreSQL host |
+| `DATABASE_PORT` | `5432` | |
+| `DATABASE_USER` | `restaurant_user` | |
+| `DATABASE_PASSWORD` | `restaurant_pass` | |
+| `DATABASE_NAME` | `restaurant_db` | |
+| `DATABASE_SSLMODE` | `disable` | |
+| `MENU_SERVICE_ADDR` | `localhost:50054` | Menu service gRPC address |
+| `TABLE_SERVICE_ADDR` | `""` | Table service address — **rỗng = auto-assign bị tắt** |
+| `LOG_LEVEL` | `info` | |
+
+---
+
+## Build & Run
 
 ```bash
-# Unit tests
-go test ./internal/...
-
-# Integration tests
-go test ./...
-
-# With coverage
-go test -cover ./...
+cd services/order-service
+go build ./cmd/server/
+go run cmd/server/main.go
 ```
 
-## 🎯 Use Cases
-
-### Typical Order Flow
-
-1. **Customer Arrives**
-   ```
-   Table Service: Get available table
-   User Service: Get waiter
-   ```
-
-2. **Create Order**
-   ```
-   Menu Service: Validate menu items and get prices
-   Order Service: Create order with items
-   Table Service: Mark table as occupied
-   ```
-
-3. **Order Processing**
-   ```
-   Order Status: PENDING → CONFIRMED (waiter confirms)
-   Order Status: CONFIRMED → PREPARING (kitchen starts)
-   Order Status: PREPARING → READY (kitchen finished)
-   Order Status: READY → SERVED (waiter serves)
-   ```
-
-4. **Complete Order**
-   ```
-   Payment Service: Process payment
-   Order Status: SERVED → COMPLETED
-   Table Service: Mark table as available
-   ```
-
-## 📝 Notes
-
-- **Inter-Service Dependencies**: Order Service requires Menu, Table, and User services to be running
-- **In-Memory Storage**: Current implementation uses in-memory repository. Ready for PostgreSQL.
-- **Table Management**: Automatically updates table status (occupied when order created, available when completed/cancelled)
-- **Price Locking**: Menu item prices are locked when order is created
-- **Tax Calculation**: Fixed at 10% of subtotal
-- **Discount Validation**: Cannot exceed subtotal
-- **Quantity Limits**: Max 100 items per line item
-- **Thread-Safe**: All repository operations are thread-safe
-
-## 🔄 Future Enhancements
-
-- [ ] PostgreSQL repository implementation
-- [ ] Redis caching for active orders
-- [ ] Order splitting (split bill)
-- [ ] Order merging (combine tables)
-- [ ] Tip/gratuity support
-- [ ] Custom tax rates
-- [ ] Promotional codes
-- [ ] Order history archiving
-- [ ] Real-time notifications (kitchen display, waiter alerts)
-- [ ] Order preparation time tracking
-
-## 📚 Dependencies
-
-- `google.golang.org/grpc` - gRPC framework
-- `google.golang.org/protobuf` - Protocol Buffers
-- `github.com/google/uuid` - UUID generation
-- Shared packages: logger, middleware
-- External services: Menu, Table, User
-
-## 🔗 Service Interactions
-
-```
-Order Service (50055)
-├── → Menu Service (50054)
-│   └── ValidateMenuItem (check availability, get price)
-├── → Table Service (50053)
-│   ├── ValidateTable (check availability)
-│   └── UpdateTableStatus (mark occupied/available)
-└── → User Service (50052)
-    └── ValidateWaiter (check user exists and is active)
+Cross-compile cho Alpine container (docker-compose):
+```bash
+GOOS=linux GOARCH=amd64 go build -o server ./cmd/server/
 ```
 
-## 📄 License
+---
 
-Part of Restaurant Management System
+## grpcurl — ví dụ
+
+```bash
+# Tạo order — auto-assign bàn (không truyền table_id)
+grpcurl -plaintext -d '{
+  "name": "Nguyen Van A",
+  "phone": "0901234567",
+  "date": "2026-06-15",
+  "time": "19:00",
+  "end_time": "21:00",
+  "party_size": 4,
+  "notes": "dị ứng hải sản"
+}' localhost:50055 order.OrderService/CreateOrder
+
+# Lấy order
+grpcurl -plaintext -d '{"order_id":"ORDER_UUID"}' localhost:50055 order.OrderService/GetOrder
+
+# Danh sách orders đang Pending
+grpcurl -plaintext -d '{"page":1,"page_size":20,"status":"Pending"}' localhost:50055 order.OrderService/ListOrders
+
+# Xác nhận order
+grpcurl -plaintext -d '{"order_id":"ORDER_UUID","status":"Confirmed"}' localhost:50055 order.OrderService/UpdateOrderStatus
+
+# Huỷ order
+grpcurl -plaintext -d '{"order_id":"ORDER_UUID","reason":"Khach huy"}' localhost:50055 order.OrderService/CancelOrder
+```
+
+---
+
+## Related services
+
+- **table-service** (port 50053) — cung cấp `GetAvailableTables` cho auto-assign
+- **menu-service** (port 50054) — validate và lấy thông tin món ăn

@@ -6,7 +6,6 @@ option go_package = "restaurant-management/proto/table";
 
 import "google/protobuf/timestamp.proto";
 
-// Table Service Definition
 service TableService {
   rpc CreateTable(CreateTableRequest) returns (CreateTableResponse);
   rpc GetTable(GetTableRequest) returns (GetTableResponse);
@@ -15,65 +14,29 @@ service TableService {
   rpc ListTables(ListTablesRequest) returns (ListTablesResponse);
   rpc UpdateTableStatus(UpdateTableStatusRequest) returns (UpdateTableStatusResponse);
   rpc GetAvailableTables(GetAvailableTablesRequest) returns (GetAvailableTablesResponse);
-  rpc CreateReservation(CreateReservationRequest) returns (CreateReservationResponse);
-  rpc GetReservation(GetReservationRequest) returns (GetReservationResponse);
-  rpc ListReservations(ListReservationsRequest) returns (ListReservationsResponse);
-  rpc CancelReservation(CancelReservationRequest) returns (CancelReservationResponse);
 }
 
-// Enums
+// Physical/operational state of a table.
+// Time-slot availability is owned by order-service, not this status.
 enum TableStatus {
   STATUS_UNKNOWN = 0;
   STATUS_AVAILABLE = 1;
-  STATUS_OCCUPIED = 2;
-  STATUS_RESERVED = 3;
-  STATUS_CLEANING = 4;
-  STATUS_OUT_OF_SERVICE = 5;
+  STATUS_CLEANING = 2;
+  STATUS_OUT_OF_SERVICE = 3;
 }
 
-enum ReservationStatus {
-  RESERVATION_STATUS_UNKNOWN = 0;
-  RESERVATION_STATUS_RESERVED = 1;
-  RESERVATION_STATUS_CANCELLED = 2;
-  RESERVATION_STATUS_COMPLETED = 3;
-}
-
-// Messages
 message Table {
   string table_id = 1;
-  string table_number = 2;
+  int32 table_number = 2;
   int32 capacity = 3;
   TableStatus status = 4;
-  string location = 5;
-  string current_order_id = 6;
-  google.protobuf.Timestamp created_at = 7;
-  google.protobuf.Timestamp updated_at = 8;
-}
-
-message ReservationItem {
-  string menu_item_id = 1;
-  int32 quantity = 2;
-  string note = 3;
-}
-
-message Reservation {
-  string reservation_id = 1;
-  string table_id = 2;
-  string customer_name = 3;
-  string customer_phone = 4;
-  string notes = 5;
-  ReservationStatus status = 6;
-  google.protobuf.Timestamp start_time = 7;
-  google.protobuf.Timestamp end_time = 8;
-  repeated ReservationItem items = 9;
-  google.protobuf.Timestamp created_at = 10;
-  google.protobuf.Timestamp updated_at = 11;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
 }
 
 message CreateTableRequest {
-  string table_number = 1;
+  int32 table_number = 1;
   int32 capacity = 2;
-  string location = 3;
 }
 
 message CreateTableResponse {
@@ -94,9 +57,8 @@ message GetTableResponse {
 
 message UpdateTableRequest {
   string table_id = 1;
-  string table_number = 2;
+  int32 table_number = 2;
   int32 capacity = 3;
-  string location = 4;
 }
 
 message UpdateTableResponse {
@@ -118,7 +80,6 @@ message ListTablesRequest {
   int32 page = 1;
   int32 page_size = 2;
   TableStatus status = 3;
-  string location = 4;
 }
 
 message ListTablesResponse {
@@ -133,7 +94,6 @@ message ListTablesResponse {
 message UpdateTableStatusRequest {
   string table_id = 1;
   TableStatus status = 2;
-  string order_id = 3;
 }
 
 message UpdateTableStatusResponse {
@@ -144,65 +104,10 @@ message UpdateTableStatusResponse {
 
 message GetAvailableTablesRequest {
   int32 min_capacity = 1;
-  string location = 2;
 }
 
 message GetAvailableTablesResponse {
   repeated Table tables = 1;
-  bool success = 2;
-  string message = 3;
-}
-
-message CreateReservationRequest {
-  string table_id = 1;
-  string customer_name = 2;
-  string customer_phone = 3;
-  string notes = 4;
-  google.protobuf.Timestamp start_time = 5;
-  google.protobuf.Timestamp end_time = 6;
-  repeated ReservationItem items = 7;
-}
-
-message CreateReservationResponse {
-  Reservation reservation = 1;
-  bool success = 2;
-  string message = 3;
-}
-
-message GetReservationRequest {
-  string reservation_id = 1;
-}
-
-message GetReservationResponse {
-  Reservation reservation = 1;
-  bool success = 2;
-  string message = 3;
-}
-
-message ListReservationsRequest {
-  string table_id = 1;
-  ReservationStatus status = 2;
-  google.protobuf.Timestamp from_time = 3;
-  google.protobuf.Timestamp to_time = 4;
-  int32 page = 5;
-  int32 page_size = 6;
-}
-
-message ListReservationsResponse {
-  repeated Reservation reservations = 1;
-  int32 total = 2;
-  int32 page = 3;
-  int32 page_size = 4;
-  bool success = 5;
-  string message = 6;
-}
-
-message CancelReservationRequest {
-  string reservation_id = 1;
-}
-
-message CancelReservationResponse {
-  Reservation reservation = 1;
   bool success = 2;
   string message = 3;
 }

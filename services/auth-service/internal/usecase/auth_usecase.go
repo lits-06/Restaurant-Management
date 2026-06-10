@@ -2,184 +2,128 @@ package usecase
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"restaurant-management/services/auth-service/internal/domain"
 	"restaurant-management/services/auth-service/internal/repository"
 	"restaurant-management/shared/pkg/jwt"
-	"restaurant-management/shared/pkg/utils"
 )
 
-// AuthUseCase handles authentication business logic
+// UserServiceClient is the interface auth-service uses to talk to user-service.
+type UserServiceClient interface {
+	CreateUser(ctx context.Context, email, username, fullName, phone, password string) (userID string, err error)
+	VerifyCredentials(ctx context.Context, email, password string) (userID string, userEmail string, roles []string, err error)
+	GetUser(ctx context.Context, userID string) (userEmail string, roles []string, err error)
+	ChangePassword(ctx context.Context, userID, oldPassword, newPassword string) error
+}
+
 type AuthUseCase struct {
-	userRepo       repository.UserRepository
-	tokenRepo      repository.RefreshTokenRepository
-	jwtManager     *jwt.Manager
-	passwordHasher PasswordHasher
+	tokenRepo  repository.RefreshTokenRepository
+	jwtManager *jwt.Manager
+	userClient UserServiceClient
 }
 
-// PasswordHasher interface for password hashing
-type PasswordHasher interface {
-	Hash(password string) (string, error)
-	Compare(hashedPassword, password string) error
-}
-
-// NewAuthUseCase creates a new AuthUseCase
 func NewAuthUseCase(
-	userRepo repository.UserRepository,
 	tokenRepo repository.RefreshTokenRepository,
 	jwtManager *jwt.Manager,
-	passwordHasher PasswordHasher,
+	userClient UserServiceClient,
 ) *AuthUseCase {
 	return &AuthUseCase{
-		userRepo:       userRepo,
-		tokenRepo:      tokenRepo,
-		jwtManager:     jwtManager,
-		passwordHasher: passwordHasher,
+		tokenRepo:  tokenRepo,
+		jwtManager: jwtManager,
+		userClient: userClient,
 	}
 }
 
-// Register registers a new user
+// Register creates a new user via user-service. Returns the new user_id.
 func (uc *AuthUseCase) Register(ctx context.Context, email, password, username, fullName, phone string) (string, error) {
-	// Check if user already exists
-	exists, err := uc.userRepo.Exists(ctx, email)
-	if err != nil {
-		return "", err
-	}
-	if exists {
-		return "", domain.ErrUserAlreadyExists
-	}
-
-	// Validate password strength
 	if len(password) < 8 {
 		return "", domain.ErrWeakPassword
 	}
-
-	// Hash password
-	passwordHash, err := uc.passwordHasher.Hash(password)
+	userID, err := uc.userClient.CreateUser(ctx, email, username, fullName, phone, password)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("register: %w", err)
 	}
-
-	// Create user
-	userID := utils.GenerateUUID()
-	user := domain.NewUser(userID, email, passwordHash)
-
-	if err := uc.userRepo.Create(ctx, user); err != nil {
-		return "", err
-	}
-
 	return userID, nil
 }
 
-// Login authenticates a user and returns tokens
-func (uc *AuthUseCase) Login(ctx context.Context, email, password string) (*domain.AuthSession, error) {
-	// Find user by email
-	user, err := uc.userRepo.FindByEmail(ctx, email)
+// Login verifies credentials via user-service, then issues JWT tokens.
+func (uc *AuthUseCase) Login(ctx context.Context, email, password string) (accessToken, refreshToken, userID string, err error) {
+	uid, userEmail, roles, err := uc.userClient.VerifyCredentials(ctx, email, password)
 	if err != nil {
-		if err == domain.ErrUserNotFound {
-			return nil, domain.ErrInvalidCredentials
-		}
-		return nil, err
+		return "", "", "", domain.ErrInvalidCredentials
 	}
 
-	// Verify password
-	if err := uc.passwordHasher.Compare(user.Password, password); err != nil {
-		return nil, domain.ErrInvalidCredentials
-	}
-
-	// Generate access token
-	accessToken, err := uc.jwtManager.GenerateAccessToken(user.UserID, user.Email)
+	accessToken, err = uc.jwtManager.GenerateAccessToken(uid, userEmail, roles)
 	if err != nil {
-		return nil, err
+		return "", "", "", fmt.Errorf("generate access token: %w", err)
 	}
 
-	// Generate refresh token
-	refreshTokenStr, err := uc.jwtManager.GenerateRefreshToken(user.UserID)
+	refreshToken, err = uc.jwtManager.GenerateRefreshToken(uid)
 	if err != nil {
-		return nil, err
+		return "", "", "", fmt.Errorf("generate refresh token: %w", err)
 	}
 
-	// Store refresh token
 	expiresAt := time.Now().Add(uc.jwtManager.GetRefreshTokenDuration())
-	refreshToken := domain.NewRefreshToken(user.UserID, refreshTokenStr, expiresAt)
-
-	if err := uc.tokenRepo.Create(ctx, refreshToken); err != nil {
-		return nil, err
+	rt := domain.NewRefreshToken(uid, refreshToken, expiresAt)
+	if err = uc.tokenRepo.Create(ctx, rt); err != nil {
+		return "", "", "", fmt.Errorf("store refresh token: %w", err)
 	}
 
-	// Create session
-	session := domain.NewAuthSession(
-		user.UserID,
-		user.Email,
-		accessToken,
-		refreshTokenStr,
-		int64(uc.jwtManager.GetAccessTokenDuration().Seconds()),
-	)
-
-	return session, nil
+	return accessToken, refreshToken, uid, nil
 }
 
-// RefreshToken generates new tokens using refresh token
-func (uc *AuthUseCase) RefreshToken(ctx context.Context, refreshTokenStr string) (*domain.AuthSession, error) {
-	// Verify refresh token format
+// RefreshToken issues a new access token using an existing refresh token.
+func (uc *AuthUseCase) RefreshToken(ctx context.Context, refreshTokenStr string) (string, error) {
 	claims, err := uc.jwtManager.VerifyToken(refreshTokenStr)
 	if err != nil {
-		return nil, domain.ErrInvalidToken
+		return "", domain.ErrInvalidToken
 	}
 
-	// Find refresh token in database
-	refreshToken, err := uc.tokenRepo.FindByToken(ctx, refreshTokenStr)
+	rt, err := uc.tokenRepo.FindByToken(ctx, refreshTokenStr)
 	if err != nil {
-		if err == domain.ErrTokenNotFound {
-			return nil, domain.ErrInvalidToken
-		}
-		return nil, err
+		return "", domain.ErrInvalidToken
+	}
+	if !rt.IsValid() {
+		return "", domain.ErrTokenExpired
+	}
+	if claims.UserID != "" && claims.UserID != rt.UserID {
+		return "", domain.ErrInvalidToken
 	}
 
-	// Check if token is valid
-	if !refreshToken.IsValid() {
-		return nil, domain.ErrTokenExpired
-	}
-	if claims.UserID != "" && claims.UserID != refreshToken.UserID {
-		return nil, domain.ErrInvalidToken
-	}
-
-	// Get user
-	user, err := uc.userRepo.FindByID(ctx, refreshToken.UserID)
+	email, roles, err := uc.userClient.GetUser(ctx, rt.UserID)
 	if err != nil {
-		return nil, err
+		return "", fmt.Errorf("get user for refresh: %w", err)
 	}
 
-	// Generate new access token
-	newAccessToken, err := uc.jwtManager.GenerateAccessToken(user.UserID, user.Email)
+	newAccessToken, err := uc.jwtManager.GenerateAccessToken(rt.UserID, email, roles)
 	if err != nil {
-		return nil, err
+		return "", fmt.Errorf("generate access token: %w", err)
 	}
-
-	// Create session
-	session := domain.NewAuthSession(
-		user.UserID,
-		user.Email,
-		newAccessToken,
-		refreshTokenStr,
-		int64(uc.jwtManager.GetAccessTokenDuration().Seconds()),
-	)
-
-	return session, nil
+	return newAccessToken, nil
 }
 
-// VerifyToken verifies an access token
+// VerifyToken parses and validates an access token.
 func (uc *AuthUseCase) VerifyToken(ctx context.Context, accessToken string) (*jwt.Claims, error) {
-	claims, err := uc.jwtManager.VerifyToken(accessToken)
-	if err != nil {
-		return nil, err
-	}
-	return claims, nil
+	return uc.jwtManager.VerifyToken(accessToken)
 }
 
-// TODO
-// Logout revokes all refresh tokens for a user
-func (uc *AuthUseCase) Logout(ctx context.Context, userID string) error {
+// Logout revokes the given refresh token.
+func (uc *AuthUseCase) Logout(ctx context.Context, refreshToken string) error {
+	if refreshToken == "" {
+		return nil
+	}
+	if err := uc.tokenRepo.Delete(ctx, refreshToken); err != nil && err != domain.ErrTokenNotFound {
+		return err
+	}
 	return nil
+}
+
+// ChangePassword delegates to user-service.
+func (uc *AuthUseCase) ChangePassword(ctx context.Context, userID, oldPassword, newPassword string) error {
+	if len(newPassword) < 8 {
+		return domain.ErrWeakPassword
+	}
+	return uc.userClient.ChangePassword(ctx, userID, oldPassword, newPassword)
 }

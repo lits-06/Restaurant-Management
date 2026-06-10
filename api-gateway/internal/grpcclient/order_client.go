@@ -92,6 +92,12 @@ func (c *OrderClient) RemoveOrderItem(ctx context.Context, req *orderpb.RemoveOr
 	return c.client.RemoveOrderItem(ctx, req)
 }
 
+func (c *OrderClient) UpdateOrderItemStatus(ctx context.Context, req *orderpb.UpdateOrderItemStatusRequest) (*orderpb.UpdateOrderItemStatusResponse, error) {
+	ctx, cancel := context.WithTimeout(ctx, defaultRPCTimeout)
+	defer cancel()
+	return c.client.UpdateOrderItemStatus(ctx, req)
+}
+
 // func (c *OrderClient) GetOrdersByTable(ctx context.Context, req *orderpb.GetOrdersByTableRequest) (*orderpb.GetOrdersByTableResponse, error) {
 // 	ctx, cancel := context.WithTimeout(ctx, defaultRPCTimeout)
 // 	defer cancel()

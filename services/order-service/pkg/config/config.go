@@ -7,10 +7,11 @@ import (
 
 // Config holds the application configuration
 type Config struct {
-	GRPCPort        int
-	LogLevel        string
-	Database        DatabaseConfig
-	MenuServiceAddr string
+	GRPCPort         int
+	LogLevel         string
+	Database         DatabaseConfig
+	MenuServiceAddr  string
+	TableServiceAddr string // empty = auto-assign disabled
 }
 
 // DatabaseConfig holds PostgreSQL connection settings.
@@ -33,7 +34,8 @@ func Load() (*Config, error) {
 	dbPassword := getEnv("DATABASE_PASSWORD", "restaurant_pass")
 	dbName := getEnv("DATABASE_NAME", "restaurant_db")
 	sslMode := getEnv("DATABASE_SSLMODE", "disable")
-	menuServiceAddr := getEnv("MENU_SERVICE_ADDR", "localhost:50054")
+	menuServiceAddr  := getEnv("MENU_SERVICE_ADDR", "localhost:50054")
+	tableServiceAddr := getEnv("TABLE_SERVICE_ADDR", "")
 
 	return &Config{
 		GRPCPort: grpcPort,
@@ -46,7 +48,8 @@ func Load() (*Config, error) {
 			Name:     dbName,
 			SSLMode:  sslMode,
 		},
-		MenuServiceAddr: menuServiceAddr,
+		MenuServiceAddr:  menuServiceAddr,
+		TableServiceAddr: tableServiceAddr,
 	}, nil
 }
 

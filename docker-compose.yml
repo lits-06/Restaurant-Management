@@ -23,21 +23,20 @@ services:
     working_dir: /app/auth-service
     command: ["sh", "-c", "chmod +x ./server && ./server"]
     environment:
-      - DATABASE_HOST=postgres
-      - DATABASE_PORT=5432
-      - DATABASE_USER=restaurant_user
-      - DATABASE_PASSWORD=restaurant_pass
-      - DATABASE_NAME=restaurant_db
-      - DATABASE_SSLMODE=disable
+      - SERVER_PORT=50051
+      - USER_SERVICE_ADDR=user-service:50056
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - JWT_SECRET=rms-dev-secret-key-do-not-use-in-production-2026
+      - JWT_ACCESS_MINUTES=15
+      - JWT_REFRESH_HOURS=168
     ports:
       - "50051:50051"
     volumes:
       - ./services/auth-service:/app/auth-service
     depends_on:
-      - postgres
       - redis
+      - user-service
 
   menu-service:
     image: alpine:latest
@@ -79,25 +78,25 @@ services:
     depends_on:
       - postgres
 
-  # table-service:
-  #   image: alpine:latest
-  #   container_name: table-service
-  #   working_dir: /app/table-service
-  #   command: ["sh", "-c", "chmod +x ./server && ./server"]
-  #   environment:
-  #     - SERVER_PORT=50053
-  #     - DATABASE_HOST=postgres
-  #     - DATABASE_PORT=5432
-  #     - DATABASE_USER=restaurant_user
-  #     - DATABASE_PASSWORD=restaurant_pass
-  #     - DATABASE_NAME=restaurant_db
-  #     - DATABASE_SSLMODE=disable
-  #   ports:
-  #     - "50053:50053"
-  #   volumes:
-  #     - ./services/table-service:/app/table-service
-  #   depends_on:
-  #     - postgres
+  table-service:
+    image: alpine:latest
+    container_name: table-service
+    working_dir: /app/table-service
+    command: ["sh", "-c", "chmod +x ./server && ./server"]
+    environment:
+      - SERVER_PORT=50053
+      - DATABASE_HOST=postgres
+      - DATABASE_PORT=5432
+      - DATABASE_USER=restaurant_user
+      - DATABASE_PASSWORD=restaurant_pass
+      - DATABASE_NAME=restaurant_db
+      - DATABASE_SSLMODE=disable
+    ports:
+      - "50053:50053"
+    volumes:
+      - ./services/table-service:/app/table-service
+    depends_on:
+      - postgres
 
   order-service:
     image: alpine:latest
@@ -113,11 +112,33 @@ services:
       - DATABASE_NAME=restaurant_db
       - DATABASE_SSLMODE=disable
       - MENU_SERVICE_ADDR=menu-service:50054
+      - TABLE_SERVICE_ADDR=table-service:50053
       - LOG_LEVEL=info
     ports:
       - "50055:50055"
     volumes:
       - ./services/order-service:/app/order-service
+    depends_on:
+      - postgres
+      - table-service
+
+  user-service:
+    image: alpine:latest
+    container_name: user-service
+    working_dir: /app/user-service
+    command: ["sh", "-c", "chmod +x ./server && ./server"]
+    environment:
+      - SERVER_PORT=50056
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=restaurant_user
+      - DB_PASSWORD=restaurant_pass
+      - DB_NAME=restaurant_db
+      - DB_SSLMODE=disable
+    ports:
+      - "50056:50056"
+    volumes:
+      - ./services/user-service:/app/user-service
     depends_on:
       - postgres
 
@@ -132,15 +153,16 @@ services:
     environment:
       - SERVER_PORT=8080
       - AUTH_SERVICE_HOST=auth-service
-      - AUTH_SERVICE_PORT=50051
-      # - TABLE_SERVICE_HOST=table-service
-      # - TABLE_SERVICE_PORT=50053
       - STAFF_SERVICE_HOST=staff-service
       - STAFF_SERVICE_PORT=50052
       - MENU_SERVICE_HOST=menu-service
       - MENU_SERVICE_PORT=50054
       - ORDER_SERVICE_HOST=order-service
       - ORDER_SERVICE_PORT=50055
+      - TABLE_SERVICE_HOST=table-service
+      - TABLE_SERVICE_PORT=50053
+      - USER_SERVICE_HOST=user-service
+      - USER_SERVICE_PORT=50056
       - ENVIRONMENT=development
     ports:
       - "8080:8080"
@@ -148,9 +170,10 @@ services:
       - ./api-gateway:/app/api-gateway
     depends_on:
       - auth-service
-      # - table-service
       - menu-service
       - order-service
+      - table-service
+      - user-service
 
 volumes:
   postgres_data:

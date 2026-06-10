@@ -59,15 +59,17 @@ message VerifyTokenRequest {
 }
 
 message VerifyTokenResponse {
-  bool valid = 1;
-  string user_id = 2;
-  string email = 3;
+  bool                      valid      = 1;
+  string                    user_id    = 2;
+  string                    email      = 3;
   google.protobuf.Timestamp expires_at = 4;
+  repeated string           roles      = 5;
 }
 
 message LogoutRequest {
-  string user_id = 1;
-  string access_token = 2;
+  string user_id       = 1;
+  string access_token  = 2;
+  string refresh_token = 3;
 }
 
 message LogoutResponse {

@@ -1,5 +1,10 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { menuApi, ordersApi, type MenuItemDto } from '../api/gateway.api';
+import { menuApi, tableApi, ordersApi, type MenuItemDto } from '../api/gateway.api';
+import { useAuthStore } from '../store/authStore';
+
+interface ReservationPageProps {
+  onNeedLogin?: () => void;
+}
 
 // Định nghĩa cấu trúc dữ liệu cho món ăn
 interface Dish {
@@ -48,8 +53,28 @@ const mockDishes: Dish[] = [
 ];
 
 const getMenuItemId = (item: MenuItemDto) => item.item_id ?? item.itemId ?? '';
-const getMenuItemImage = (item: MenuItemDto) =>
-  item.image_url ?? item.imageUrl ?? 'https://www.gstatic.com/labs-code/stitch/stitch-placeholder-300x300.svg';
+const getMenuItemImage = (item: MenuItemDto) => {
+  const image = item.image_url ?? item.imageUrl;
+
+  if (!image) {
+    return '/images/default-food.jpg';
+  }
+
+  // nếu DB trả về assets/images/...
+  if (image.startsWith('assets/')) {
+    return image.replace('assets/', '/');
+  }
+
+  return image.startsWith('/') ? image : `/${image}`;
+};
+
+const addHours = (timeStr: string, hours: number): string => {
+  const [h, m] = timeStr.split(':').map(Number);
+  const totalMin = h * 60 + m + hours * 60;
+  const newH = Math.floor(totalMin / 60) % 24;
+  const newM = totalMin % 60;
+  return `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`;
+};
 
 const toDish = (item: MenuItemDto): Dish => ({
   id: getMenuItemId(item),
@@ -62,7 +87,7 @@ const toDish = (item: MenuItemDto): Dish => ({
   image: getMenuItemImage(item),
 });
 
-const ReservationPage: React.FC = () => {
+const ReservationPage: React.FC<ReservationPageProps> = ({ onNeedLogin }) => {
   // Quản lý các bước (Step 1, 2, 3)
   const [step, setStep] = useState<number>(1);
 
@@ -75,18 +100,20 @@ const ReservationPage: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [submitError, setSubmitError] = useState<string>('');
   const [confirmedOrderId, setConfirmedOrderId] = useState<string>('');
+  const [confirmedTableNumber, setConfirmedTableNumber] = useState<number | null>(null);
 
   // Thông tin đặt bàn cơ bản
   const [bookingDate, setBookingDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
   const [guestCount, setGuestCount] = useState<string>('2 Guests');
-  const [selectedTime, setSelectedTime] = useState<string>('19:15');
+  const [selectedTime, setSelectedTime] = useState<string>('19:00');
+  const [selectedEndTime, setSelectedEndTime] = useState<string>(() => addHours('19:00', 2));
+
+  const { user } = useAuthStore();
 
   const [customerName, setCustomerName] = useState<string>('');
   const [phoneNumber, setPhoneNumber] = useState<string>('');
   const [specialNotes, setSpecialNotes] = useState<string>('');
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'qr'>('cash');
 
-  // Tạo mã tham chiếu đặt bàn ngẫu nhiên cố định cho phiên làm việc
   const referenceNumber = useMemo(() => confirmedOrderId || 'Pending confirmation', [confirmedOrderId]);
 
   // Canvas Reference phục vụ hiệu ứng Confetti
@@ -104,6 +131,17 @@ const ReservationPage: React.FC = () => {
       return { ...prev, [id]: newQty };
     });
   };
+
+  // Auth guard + pre-fill
+  useEffect(() => {
+    if (!useAuthStore.getState().user) {
+      if (onNeedLogin) onNeedLogin();
+      return;
+    }
+    const u = useAuthStore.getState().user!;
+    if (u.full_name) setCustomerName(u.full_name);
+    if (u.phone) setPhoneNumber(u.phone);
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -132,8 +170,6 @@ const ReservationPage: React.FC = () => {
   }, []);
 
   // Tính toán hóa đơn dựa vào giỏ hàng thực tế
-  const depositFee = 50.0;
-  
   const preOrderSubtotal = useMemo(() => {
     return Object.entries(cart).reduce((sum, [id, qty]) => {
       const dish = dishes.find((d) => d.id === id);
@@ -141,9 +177,6 @@ const ReservationPage: React.FC = () => {
     }, 0);
   }, [cart, dishes]);
 
-  const serviceCharge = useMemo(() => preOrderSubtotal * 0.15, [preOrderSubtotal]);
-  const tax = useMemo(() => preOrderSubtotal * 0.0838, [preOrderSubtotal]); // Tỉ lệ tương đương thiết kế mẫu (~$41.50)
-  const totalDueToday = preOrderSubtotal + serviceCharge + tax;
 
   // Chuyển bước đi kèm hiệu ứng cuộn mượt mà trên mobile
   const goToStep = (stepNumber: number) => {
@@ -158,6 +191,15 @@ const ReservationPage: React.FC = () => {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 8;
   }, [guestCount]);
 
+  // Khi user đổi giờ bắt đầu → tự động reset giờ kết thúc về start+2h
+  useEffect(() => {
+    setSelectedEndTime(addHours(selectedTime, 2));
+  }, [selectedTime]);
+
+  const handleProceedToPayment = () => {
+    goToStep(2);
+  };
+
   const submitOrder = async () => {
     setSubmitError('');
 
@@ -166,22 +208,35 @@ const ReservationPage: React.FC = () => {
       return;
     }
 
+    if (selectedEndTime <= selectedTime) {
+      setSubmitError('Giờ kết thúc phải sau giờ bắt đầu.');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
+      const items = Object.entries(cart).map(([itemId, quantity]) => ({ item_id: itemId, quantity }));
+
       const response = await ordersApi.create({
         name: customerName.trim(),
         phone: phoneNumber.trim(),
-        time: selectedTime,
         date: bookingDate,
+        time: selectedTime,
+        end_time: selectedEndTime,
         party_size: guestCountNumber,
-        status: '',
-        items: Object.entries(cart).map(([itemId, quantity]) => ({
-          item_id: itemId,
-          quantity,
-        })),
+        notes: specialNotes.trim(),
+        items,
       });
 
-      setConfirmedOrderId(response.order?.order_id ?? response.order?.orderId ?? '');
+      setConfirmedOrderId(response.order?.order_id ?? '');
+
+      const tableId = response.order?.table_id;
+      if (tableId) {
+        tableApi.getOne(tableId)
+          .then((r) => setConfirmedTableNumber(r.table?.table_number ?? null))
+          .catch(() => {});
+      }
+
       goToStep(3);
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : 'Không thể gửi đặt bàn đến máy chủ.');
@@ -462,28 +517,42 @@ const ReservationPage: React.FC = () => {
                         <option>Private Party (8+)</option>
                       </select>
                     </div>
-                    {/* Time Slots */}
-                    <div className="md:col-span-2 space-y-4">
-                      <label className="text-label-sm font-label-sm text-on-surface-variant block uppercase">Available Dinner Slots</label>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                        {['18:30', '19:15', '20:00', '21:30'].map((time) => {
-                          const isTimeSelected = selectedTime === time;
-                          return (
-                            <button
-                              key={time}
-                              type="button"
-                              onClick={() => setSelectedTime(time)}
-                              className={`py-3 px-4 rounded-lg text-center transition-all active:scale-95 text-sm ${
-                                isTimeSelected
-                                  ? 'border-2 border-primary bg-primary-container/20 text-on-primary-container font-bold shadow-sm'
-                                  : 'border border-outline-variant bg-surface-container-low font-medium hover:border-primary'
-                              }`}
-                            >
-                              {time}
-                            </button>
-                          );
-                        })}
-                      </div>
+                    {/* Start time */}
+                    <div className="space-y-2">
+                      <label className="text-label-sm font-label-sm text-on-surface-variant block uppercase">
+                        Start Time
+                      </label>
+                      <input
+                        className="w-full bg-surface border border-outline-variant rounded-lg px-4 py-3 focus:border-primary focus:ring-1 focus:ring-primary/10 transition-all outline-none"
+                        type="time"
+                        value={selectedTime}
+                        min="10:00"
+                        max="22:00"
+                        onChange={(e) => setSelectedTime(e.target.value)}
+                      />
+                      <p className="text-xs text-on-surface-variant">Nhà hàng mở cửa 10:00 – 22:00</p>
+                    </div>
+                    {/* End time */}
+                    <div className="space-y-2">
+                      <label className="text-label-sm font-label-sm text-on-surface-variant block uppercase">
+                        End Time
+                      </label>
+                      <input
+                        className={`w-full bg-surface border rounded-lg px-4 py-3 focus:ring-1 transition-all outline-none ${
+                          selectedEndTime <= selectedTime
+                            ? 'border-error focus:border-error focus:ring-error/10'
+                            : 'border-outline-variant focus:border-primary focus:ring-primary/10'
+                        }`}
+                        type="time"
+                        value={selectedEndTime}
+                        min={selectedTime}
+                        max="22:00"
+                        onChange={(e) => setSelectedEndTime(e.target.value)}
+                      />
+                      {selectedEndTime <= selectedTime
+                        ? <p className="text-xs text-error">Phải sau giờ bắt đầu</p>
+                        : <p className="text-xs text-on-surface-variant">Mặc định +2h, điều chỉnh nếu cần</p>
+                      }
                     </div>
                   </div>
 
@@ -521,7 +590,7 @@ const ReservationPage: React.FC = () => {
                   <div className="mt-10 flex justify-end">
                     <button
                       type="button"
-                      onClick={() => goToStep(2)}
+                      onClick={handleProceedToPayment}
                       className="bg-primary text-on-primary px-10 py-4 rounded-lg font-bold hover:shadow-lg transition-all active:scale-95 flex items-center gap-2"
                     >
                       Proceed to Payment
@@ -531,10 +600,10 @@ const ReservationPage: React.FC = () => {
                 </div>
               )}
 
-              {/* Step 2: Payment - ĐÃ THAY ĐỔI THEO THIẾT KẾ MỚI CỦA BẠN */}
+              {/* Step 2: Payment */}
               {step === 2 && (
                 <div className="transition-all duration-300">
-                  {/* Phần 1: Thông tin khách hàng */}
+                  {/* Thông tin khách hàng */}
                   <section className="mb-12 border-b border-outline-variant/30 pb-10">
                     <h2 className="font-headline-lg text-headline-lg mb-8 text-xl font-bold">Thông tin khách hàng</h2>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -574,64 +643,16 @@ const ReservationPage: React.FC = () => {
                   </section>
 
                   {/* Phần 2: Phương thức thanh toán */}
-                  <h2 className="font-headline-lg text-headline-lg mb-8 text-xl font-bold">Payment Method</h2>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
-                    <button 
-                      type="button"
-                      onClick={() => setPaymentMethod('cash')}
-                      className={`flex flex-col items-center justify-center p-8 border-2 rounded-xl transition-all group ${
-                        paymentMethod === 'cash' 
-                          ? 'border-primary bg-primary-container/10' 
-                          : 'border-outline-variant bg-transparent hover:border-primary hover:bg-surface-container-low'
-                      }`}
-                    >
-                      <span className={`material-symbols-outlined text-4xl mb-3 ${paymentMethod === 'cash' ? 'text-primary' : 'text-on-surface-variant group-hover:text-primary'}`}>payments</span>
-                      <span className={`font-headline-md font-bold text-sm ${paymentMethod === 'cash' ? 'text-primary' : 'text-on-surface-variant group-hover:text-primary'}`}>Thanh toán tiền mặt</span>
-                    </button>
-                    
-                    <button 
-                      type="button"
-                      onClick={() => setPaymentMethod('qr')}
-                      className={`flex flex-col items-center justify-center p-8 border-2 rounded-xl transition-all group ${
-                        paymentMethod === 'qr' 
-                          ? 'border-primary bg-primary-container/10' 
-                          : 'border-outline-variant bg-transparent hover:border-primary hover:bg-surface-container-low'
-                      }`}
-                    >
-                      <span className={`material-symbols-outlined text-4xl mb-3 ${paymentMethod === 'qr' ? 'text-primary' : 'text-on-surface-variant group-hover:text-primary'}`}>qr_code_2</span>
-                      <span className={`font-headline-md font-bold text-sm ${paymentMethod === 'qr' ? 'text-primary' : 'text-on-surface-variant group-hover:text-primary'}`}>Quét mã QR</span>
-                    </button>
-                  </div>
-
-                  {/* Vùng nội dung hiển thị động tương ứng với phương thức được chọn */}
                   <div className="py-8 border-t border-outline-variant/30">
-                    {paymentMethod === 'cash' && (
-                      <div className="flex flex-col items-center text-center space-y-4">
-                        <div className="w-16 h-16 rounded-full bg-primary-container/20 flex items-center justify-center text-primary">
-                          <span className="material-symbols-outlined text-3xl">restaurant</span>
-                        </div>
-                        <p className="font-body-lg text-on-surface-variant max-w-md">
-                          Quý khách vui lòng thanh toán trực tiếp tại nhà hàng khi đến trải nghiệm.
-                        </p>
+                    <div className="flex flex-col items-center text-center space-y-4">
+                      <div className="w-16 h-16 rounded-full bg-primary-container/20 flex items-center justify-center text-primary">
+                        <span className="material-symbols-outlined text-3xl">restaurant</span>
                       </div>
-                    )}
-
-                    {paymentMethod === 'qr' && (
-                      <div className="flex flex-col items-center text-center space-y-6">
-                        <div className="relative p-4 bg-white rounded-2xl shadow-lg border border-outline-variant/20 max-w-xs mx-auto">
-                          <img alt="QR Payment Code" className="w-full h-auto aspect-square rounded-lg" src="https://www.gstatic.com/labs-code/stitch/stitch-placeholder-300x300.svg" />
-                          <div className="absolute inset-0 border-4 border-primary/10 rounded-2xl pointer-events-none"></div>
-                        </div>
-                        <p className="font-body-lg text-on-surface-variant">
-                          Vui lòng quét mã QR để hoàn tất thanh toán
-                        </p>
-                        <div className="flex items-center gap-2 px-4 py-2 bg-surface-container rounded-full text-xs text-on-surface-variant">
-                          <span className="material-symbols-outlined text-sm">shield_check</span>
-                          Giao dịch được bảo mật bởi LuxeBistro
-                        </div>
-                      </div>
-                    )}
+                      <h2 className="font-headline-md font-bold">Thanh toán tại nhà hàng</h2>
+                      <p className="font-body-lg text-on-surface-variant max-w-md">
+                        Quý khách vui lòng thanh toán trực tiếp tại nhà hàng khi đến trải nghiệm.
+                      </p>
+                    </div>
                   </div>
 
                   {/* Nút điều hướng biểu mẫu */}
@@ -691,12 +712,19 @@ const ReservationPage: React.FC = () => {
                             </div>
                             <div className="col-span-2">
                               <p className="text-xs text-on-surface-variant">Date & Time</p>
-                              <p className="font-bold text-on-surface">{formattedDate} • {selectedTime}</p>
+                              <p className="font-bold text-on-surface">{formattedDate} • {selectedTime} – {selectedEndTime}</p>
+                            </div>
+                            <div className="col-span-2">
+                              <p className="text-xs text-on-surface-variant">Assigned Table</p>
+                              {confirmedTableNumber !== null
+                                ? <p className="font-bold text-on-surface">Bàn {confirmedTableNumber}</p>
+                                : <p className="text-on-surface-variant italic text-xs">Nhân viên sẽ hướng dẫn khi đến</p>
+                              }
                             </div>
                             {customerName && (
                               <div className="col-span-2">
                                 <p className="text-xs text-on-surface-variant">Customer Details</p>
-                                <p className="font-bold text-on-surface">{customerName} ({phoneNumber})</p>
+                                <p className="font-bold text-on-surface">{customerName} • {phoneNumber}</p>
                               </div>
                             )}
                           </div>
@@ -724,8 +752,8 @@ const ReservationPage: React.FC = () => {
                             )}
                             
                             <li className="flex justify-between items-center pt-4 border-t border-dashed border-outline-variant">
-                              <span className="font-bold text-primary">Pre-payment Total</span>
-                              <span className="font-bold text-primary text-base">${totalDueToday.toFixed(2)}</span>
+                              <span className="font-bold text-primary">Pre-order Total</span>
+                              <span className="font-bold text-primary text-base">${preOrderSubtotal.toFixed(2)}</span>
                             </li>
                           </ul>
                         </div>
@@ -790,7 +818,7 @@ const ReservationPage: React.FC = () => {
                     <div className="flex justify-between items-center">
                       <span className="text-on-surface-variant font-medium">Date &amp; Time</span>
                       <span className="font-bold text-on-surface">
-                        {bookingDate}, {selectedTime}
+                        {bookingDate}, {selectedTime} – {selectedEndTime}
                       </span>
                     </div>
                     <div className="flex justify-between items-center">
@@ -820,29 +848,17 @@ const ReservationPage: React.FC = () => {
                     )}
                   </div>
 
-                  <div className="pt-6 border-t border-outline-variant space-y-3">
-                    <div className="flex justify-between items-center text-on-surface-variant">
-                      <span>Reservation Fee</span>
-                      <span>$0.00</span>
-                    </div>
-                    <div className="flex justify-between items-center text-on-surface-variant">
-                      <span>Booking Deposit</span>
-                      <span>${depositFee.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between items-center text-on-surface-variant">
-                      <span>Pre-order Subtotal</span>
-                      <span>${preOrderSubtotal.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between items-center pt-2">
-                      <span className="font-headline-md text-headline-md text-primary">Due Today</span>
-                      <span className="font-headline-md text-headline-md text-primary">${totalDueToday.toFixed(2)}</span>
+                  <div className="pt-6 border-t border-outline-variant">
+                    <div className="flex justify-between items-center">
+                      <span className="font-headline-md text-headline-md text-primary">Pre-order Total</span>
+                      <span className="font-headline-md text-headline-md text-primary">${preOrderSubtotal.toFixed(2)}</span>
                     </div>
                   </div>
 
                   <div className="bg-primary-container/10 p-4 rounded-lg flex items-start gap-3">
                     <span className="material-symbols-outlined text-primary text-xl">info</span>
                     <p className="text-label-sm text-on-primary-container">
-                      Price includes reservation deposit and pre-ordered items. Tax and service gratuity for additional orders will be calculated at the venue.
+                      Thanh toán trực tiếp tại nhà hàng. Tổng trên chỉ ước tính cho phần pre-order.
                     </p>
                   </div>
                 </div>

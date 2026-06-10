@@ -1,71 +1,80 @@
+import { useAuthStore } from '../../store/authStore';
+
+type Page = 'home' | 'contact' | 'reservation' | 'menu' | 'login' | 'my-orders';
+
 interface TopNavBarProps {
-  currentPage: 'home' | 'contact' | 'reservation' | 'menu';
-  setCurrentPage: (page: 'home' | 'contact' | 'reservation' | 'menu') => void;
+  currentPage: Page;
+  navigateTo: (page: Page) => void;
+  onLogout: () => void;
 }
 
-export default function TopNavBar({ currentPage, setCurrentPage }: TopNavBarProps) {
+export default function TopNavBar({ currentPage, navigateTo, onLogout }: TopNavBarProps) {
+  const { user } = useAuthStore();
+
+  const navItem = (label: string, page: Page) => (
+    <button
+      key={page}
+      onClick={() => navigateTo(page)}
+      className={`transition-colors cursor-pointer active:opacity-80 pb-1 ${
+        currentPage === page
+          ? 'text-primary border-b-2 border-primary font-semibold'
+          : 'text-on-surface-variant hover:text-primary'
+      }`}
+    >
+      {label}
+    </button>
+  );
+
   return (
     <header className="w-full top-0 sticky bg-surface z-50 shadow-sm border-b border-outline-variant">
       <nav className="flex justify-between items-center px-margin-desktop h-16 w-full max-w-container-max mx-auto">
-        
-        {/* Click vào Logo quay về Home */}
-        <div 
-          onClick={() => setCurrentPage('home')} 
+
+        <div
+          onClick={() => navigateTo('home')}
           className="font-headline-md text-headline-md font-bold text-primary cursor-pointer"
         >
           LuxeBistro
         </div>
 
-        {/* Menu điều hướng */}
         <div className="hidden md:flex items-center gap-8 font-body-md text-body-md">
-          <button
-            onClick={() => setCurrentPage('home')}
-            className={`transition-colors cursor-pointer active:opacity-80 pb-1 ${
-              currentPage === 'home' 
-                ? 'text-primary border-b-2 border-primary font-semibold' 
-                : 'text-on-surface-variant hover:text-primary'
-            }`}
-          >
-            Home
-          </button>
-          
-          <button
-            onClick={() => setCurrentPage('menu')}
-            className={`transition-colors cursor-pointer active:opacity-80 pb-1 ${
-              currentPage === 'menu' 
-                ? 'text-primary border-b-2 border-primary font-semibold' 
-                : 'text-on-surface-variant hover:text-primary'
-            }`}
-          >
-            Menu
-          </button>
-
-          <button
-            onClick={() => setCurrentPage('reservation')}
-            className={`transition-colors cursor-pointer active:opacity-80 pb-1 ${
-              currentPage === 'reservation' 
-                ? 'text-primary border-b-2 border-primary font-semibold' 
-                : 'text-on-surface-variant hover:text-primary'
-            }`}
-          >
-            Reservation
-          </button>
-
-          <button
-            onClick={() => setCurrentPage('contact')}
-            className={`transition-colors cursor-pointer active:opacity-80 pb-1 ${
-              currentPage === 'contact' 
-                ? 'text-primary border-b-2 border-primary font-semibold' 
-                : 'text-on-surface-variant hover:text-primary'
-            }`}
-          >
-            Contact
-          </button>
+          {navItem('Home', 'home')}
+          {navItem('Menu', 'menu')}
+          {navItem('Reservation', 'reservation')}
+          {navItem('Contact', 'contact')}
+          {user && navItem('My Orders', 'my-orders')}
         </div>
 
-        <button className="bg-primary-container text-on-primary-container px-6 py-2 rounded-lg font-label-sm hover:opacity-90 transition-all cursor-pointer active:scale-95">
-          Book Now
-        </button>
+        <div className="flex items-center gap-3">
+          {user ? (
+            <>
+              <span className="hidden sm:block text-sm text-on-surface-variant font-medium">
+                {user.full_name || user.username}
+              </span>
+              <button
+                onClick={onLogout}
+                className="flex items-center gap-1.5 text-sm font-semibold text-on-surface-variant border border-outline-variant px-4 py-2 rounded-lg hover:bg-surface-container-low transition-all"
+              >
+                <span className="material-symbols-outlined text-base">logout</span>
+                Đăng xuất
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={() => navigateTo('login')}
+                className="text-sm font-semibold text-primary border border-primary/30 px-4 py-2 rounded-lg hover:bg-primary/5 transition-all"
+              >
+                Đăng nhập
+              </button>
+              <button
+                onClick={() => navigateTo('reservation')}
+                className="bg-primary-container text-on-primary-container px-6 py-2 rounded-lg font-label-sm hover:opacity-90 transition-all cursor-pointer active:scale-95"
+              >
+                Book Now
+              </button>
+            </>
+          )}
+        </div>
       </nav>
     </header>
   );

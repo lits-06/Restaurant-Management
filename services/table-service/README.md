@@ -1,229 +1,217 @@
 # Table Service
 
-Table management microservice for the restaurant management system.
+Microservice quản lý thông tin vật lý của các bàn ăn trong nhà hàng.
 
-## Features
-
-- Table CRUD operations
-- Table status management (Available, Occupied, Reserved, Cleaning, Out of Service)
-- Location-based table organization
-- Capacity tracking
-- Available table search with filters
-- Table number uniqueness validation
-
-## Architecture
-
-This service follows Clean Architecture principles:
-
-```
-cmd/server/          # Application entry point
-internal/
-  domain/           # Business entities (Table)
-  repository/       # Data access interfaces & implementations
-  usecase/          # Business logic
-  delivery/grpc/    # gRPC handlers
-pkg/config/         # Configuration
-```
-
-## gRPC Service Definition
-
-```protobuf
-service TableService {
-  rpc CreateTable(CreateTableRequest) returns (CreateTableResponse);
-  rpc GetTable(GetTableRequest) returns (GetTableResponse);
-  rpc UpdateTable(UpdateTableRequest) returns (UpdateTableResponse);
-  rpc DeleteTable(DeleteTableRequest) returns (DeleteTableResponse);
-  rpc ListTables(ListTablesRequest) returns (ListTablesResponse);
-  rpc UpdateTableStatus(UpdateTableStatusRequest) returns (UpdateTableStatusResponse);
-  rpc GetAvailableTables(GetAvailableTablesRequest) returns (GetAvailableTablesResponse);
-}
-```
-
-## Running the Service
-
-### Standalone
-
-```bash
-# From project root
-go run services/table-service/cmd/server/main.go
-```
-
-### With Docker
-
-```bash
-# Build
-docker build -t table-service -f services/table-service/Dockerfile .
-
-# Run
-docker run -p 50053:50053 table-service
-```
-
-### With Docker Compose
-
-```bash
-# From project root
-docker-compose up table-service
-```
-
-## Configuration
-
-Environment variables:
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| SERVER_PORT | 50053 | gRPC server port |
-| LOG_LEVEL | info | Log level (debug, info, warn, error) |
-
-## Testing with grpcurl
-
-### Create Table
-
-```bash
-grpcurl -plaintext -d '{
-  "table_number": "T01",
-  "capacity": 4,
-  "location": "Main Hall"
-}' localhost:50053 table.TableService/CreateTable
-```
-
-### Get Table
-
-```bash
-grpcurl -plaintext -d '{
-  "table_id": "TABLE_ID_HERE"
-}' localhost:50053 table.TableService/GetTable
-```
-
-### List Tables
-
-```bash
-grpcurl -plaintext -d '{
-  "page": 1,
-  "page_size": 10,
-  "location": "Main Hall"
-}' localhost:50053 table.TableService/ListTables
-```
-
-### Update Table
-
-```bash
-grpcurl -plaintext -d '{
-  "table_id": "TABLE_ID_HERE",
-  "table_number": "T01-Updated",
-  "capacity": 6
-}' localhost:50053 table.TableService/UpdateTable
-```
-
-### Update Table Status
-
-```bash
-# Mark as occupied
-grpcurl -plaintext -d '{
-  "table_id": "TABLE_ID_HERE",
-  "status": "STATUS_OCCUPIED",
-  "order_id": "ORDER_123"
-}' localhost:50053 table.TableService/UpdateTableStatus
-
-# Mark as available
-grpcurl -plaintext -d '{
-  "table_id": "TABLE_ID_HERE",
-  "status": "STATUS_AVAILABLE"
-}' localhost:50053 table.TableService/UpdateTableStatus
-
-# Mark as reserved
-grpcurl -plaintext -d '{
-  "table_id": "TABLE_ID_HERE",
-  "status": "STATUS_RESERVED"
-}' localhost:50053 table.TableService/UpdateTableStatus
-```
-
-### Get Available Tables
-
-```bash
-# All available tables
-grpcurl -plaintext -d '{}' localhost:50053 table.TableService/GetAvailableTables
-
-# Available tables with minimum capacity
-grpcurl -plaintext -d '{
-  "min_capacity": 4,
-  "location": "Main Hall"
-}' localhost:50053 table.TableService/GetAvailableTables
-```
-
-### Delete Table
-
-```bash
-grpcurl -plaintext -d '{
-  "table_id": "TABLE_ID_HERE"
-}' localhost:50053 table.TableService/DeleteTable
-```
-
-## Table Statuses
-
-- `STATUS_AVAILABLE` - Table is ready for customers
-- `STATUS_OCCUPIED` - Table currently has customers
-- `STATUS_RESERVED` - Table is reserved for upcoming customers
-- `STATUS_CLEANING` - Table is being cleaned after customers leave
-- `STATUS_OUT_OF_SERVICE` - Table is temporarily unavailable
-
-## Status Transitions
-
-```
-AVAILABLE → OCCUPIED (when customers are seated)
-AVAILABLE → RESERVED (when table is reserved)
-RESERVED → OCCUPIED (when reserved customers arrive)
-OCCUPIED → CLEANING (when customers leave)
-CLEANING → AVAILABLE (when cleaning is done)
-ANY → OUT_OF_SERVICE (except OCCUPIED)
-OUT_OF_SERVICE → AVAILABLE (when back in service)
-```
-
-## Business Rules
-
-1. **Table Number Uniqueness**: Each table must have a unique table number
-2. **Capacity Limits**: Tables can hold 1-50 people
-3. **Deletion Restriction**: Cannot delete occupied tables
-4. **Status Changes**: Some status transitions are restricted for data integrity
-5. **Location Organization**: Tables can be organized by location (e.g., Main Hall, VIP Room, Outdoor)
-
-## Development
-
-### Adding New Features
-
-1. Update proto definition in `proto/table/table.proto`
-2. Regenerate proto code: `make proto`
-3. Add domain logic in `internal/domain/`
-4. Update repository interface if needed
-5. Implement use case in `internal/usecase/`
-6. Add gRPC handler in `internal/delivery/grpc/`
-
-### Running Tests
-
-```bash
-go test ./...
-```
-
-## Dependencies
-
-- gRPC & Protocol Buffers
-- go.uber.org/zap (logging)
-- github.com/google/uuid (UUID generation)
-
-## Related Services
-
-- **Order Service** - Links orders to tables
-- **User Service** - Waiter assignment to tables
-- **Menu Service** - Orders placed at tables
-
-## Use Cases
-
-1. **Restaurant Floor Management**: Track table availability in real-time
-2. **Reservation System**: Reserve tables for upcoming customers
-3. **Capacity Planning**: Find suitable tables for party sizes
-4. **Location-based Organization**: Manage different dining areas
+**Port:** `50053` | **Protocol:** gRPC | **Status:** Active (enabled in docker-compose)
 
 ---
 
-**Port:** 50053  
-**Protocol:** gRPC  
-**Status:** ✅ Implemented
+## Trách nhiệm
+
+Table-service chỉ quản lý **thông tin tĩnh và trạng thái vật lý** của bàn:
+- Bàn nào tồn tại, sức chứa bao nhiêu
+- Trạng thái vật lý hiện tại: sẵn sàng / đang dọn / hỏng
+
+**Không thuộc trách nhiệm của service này:**
+- Bàn nào đang có khách trong khung giờ nào → **order-service** quản lý
+- Đặt bàn trước theo thời gian → **order-service** quản lý (auto-assign)
+
+---
+
+## Database
+
+Service dùng **1 bảng** trong `restaurant_db`, tự tạo khi khởi động:
+
+```sql
+CREATE TABLE restaurant_tables (
+    table_id     VARCHAR(36) PRIMARY KEY,
+    table_number INTEGER     NOT NULL UNIQUE,  -- số bàn (1, 2, 3, ...)
+    capacity     INTEGER     NOT NULL,          -- số chỗ ngồi tối đa (1–50)
+    status       VARCHAR(32) NOT NULL DEFAULT 'AVAILABLE',
+    created_at   TIMESTAMP   NOT NULL,
+    updated_at   TIMESTAMP   NOT NULL,
+    CONSTRAINT chk_table_number CHECK (table_number > 0),
+    CONSTRAINT chk_capacity     CHECK (capacity > 0 AND capacity <= 50)
+);
+
+CREATE INDEX idx_restaurant_tables_status   ON restaurant_tables(status);
+CREATE INDEX idx_restaurant_tables_capacity ON restaurant_tables(capacity);
+```
+
+---
+
+## Trạng thái bàn (TableStatus)
+
+| Status | Ý nghĩa | Ai set |
+|--------|---------|--------|
+| `AVAILABLE` | Bàn sạch, sẵn sàng | Staff (sau khi dọn xong) |
+| `CLEANING` | Đang dọn dẹp sau khi khách rời | Staff |
+| `OUT_OF_SERVICE` | Hỏng / bảo trì | Admin |
+
+**Quan trọng:** Status này **không liên quan** đến việc bàn có được đặt hay chưa. Một bàn `AVAILABLE` vẫn có thể đã được book trong order-service. Xem [auto-assign flow](#luồng-auto-assign) để hiểu rõ hơn.
+
+### State machine
+
+```
+AVAILABLE    → CLEANING       (khách vừa rời, nhân viên bắt đầu dọn)
+CLEANING     → AVAILABLE      (dọn xong)
+AVAILABLE    → OUT_OF_SERVICE
+CLEANING     → OUT_OF_SERVICE
+OUT_OF_SERVICE → AVAILABLE    (sửa xong)
+```
+
+---
+
+## gRPC API — 7 RPCs
+
+### `CreateTable`
+```
+Request:  { table_number: int32, capacity: int32 }
+Response: { table: Table, success: bool, message: string }
+```
+Kiểm tra `table_number` chưa tồn tại trước khi tạo.
+
+### `GetTable`
+```
+Request:  { table_id: string }
+Response: { table: Table, success: bool, message: string }
+```
+
+### `UpdateTable`
+```
+Request:  { table_id: string, table_number: int32, capacity: int32 }
+Response: { table: Table, success: bool, message: string }
+```
+Partial update — chỉ cập nhật field nào được truyền vào (> 0).
+
+### `DeleteTable`
+```
+Request:  { table_id: string }
+Response: { success: bool, message: string }
+```
+
+### `ListTables`
+```
+Request:  { page: int32, page_size: int32, status: TableStatus }
+Response: { tables: []Table, total: int32, page: int32, page_size: int32, ... }
+```
+Filter theo status (optional). Sắp xếp theo `table_number ASC`.
+
+### `UpdateTableStatus`
+```
+Request:  { table_id: string, status: TableStatus }
+Response: { table: Table, success: bool, message: string }
+```
+Áp dụng state machine — từ chối transition không hợp lệ (ví dụ: CLEANING → CLEANING).
+
+### `GetAvailableTables`
+```
+Request:  { min_capacity: int32 }
+Response: { tables: []Table, success: bool, message: string }
+```
+Trả về bàn có `status = AVAILABLE` và `capacity >= min_capacity`.
+Sắp xếp theo `capacity ASC, table_number ASC` (best-fit first).
+**Dùng bởi order-service** khi auto-assign bàn cho order mới.
+
+---
+
+## Luồng auto-assign
+
+Khi khách tạo order mà không chỉ định bàn, order-service tự tìm bàn phù hợp:
+
+```
+POST /orders { party_size: 4, time: "19:00", end_time: "21:00" }
+
+order-service:
+  1. Gọi GetAvailableTables(min_capacity=4)
+     → table-service trả về [Bàn 3 (4 chỗ), Bàn 7 (6 chỗ), Bàn 9 (8 chỗ)]
+
+  2. Query DB nội bộ: bàn nào có order trùng [19:00, 21:00)?
+     → [Bàn 3, Bàn 7] đã bị chiếm
+
+  3. Gán Bàn 9 → tạo order với table_id = "uuid-ban-9"
+```
+
+---
+
+## HTTP API (qua api-gateway :8080)
+
+| Method | Path | Mô tả |
+|--------|------|-------|
+| `GET` | `/tables` | Danh sách bàn (`?status=AVAILABLE&page=1&page_size=20`) |
+| `POST` | `/tables` | Tạo bàn mới |
+| `GET` | `/tables/available` | Bàn đang AVAILABLE (`?min_capacity=4`) |
+| `GET` | `/tables/{id}` | Chi tiết một bàn |
+| `PUT` | `/tables/{id}` | Cập nhật thông tin bàn |
+| `DELETE` | `/tables/{id}` | Xoá bàn |
+| `PATCH` | `/tables/{id}/status` | Đổi trạng thái bàn |
+
+---
+
+## Cấu trúc thư mục
+
+```
+services/table-service/
+├── cmd/server/main.go
+├── internal/
+│   ├── domain/
+│   │   ├── table.go          # Entity + state machine
+│   │   └── errors.go         # Domain errors
+│   ├── repository/
+│   │   ├── repository.go     # TableRepository interface
+│   │   └── table_postgres.go # PostgreSQL implementation
+│   ├── usecase/
+│   │   └── table_usecase.go  # Business logic
+│   └── delivery/grpc/
+│       └── table_handler.go  # gRPC handler
+└── pkg/config/config.go
+```
+
+---
+
+## Configuration
+
+| Env var | Default | Mô tả |
+|---------|---------|-------|
+| `SERVER_PORT` | `50053` | gRPC port |
+| `DATABASE_HOST` | `localhost` | PostgreSQL host |
+| `DATABASE_PORT` | `5432` | |
+| `DATABASE_USER` | `restaurant_user` | |
+| `DATABASE_PASSWORD` | `restaurant_pass` | |
+| `DATABASE_NAME` | `restaurant_db` | |
+
+---
+
+## Build & Run
+
+```bash
+cd services/table-service
+go build ./cmd/server/
+go run cmd/server/main.go
+```
+
+## grpcurl — ví dụ
+
+```bash
+# Tạo bàn số 5, sức chứa 4 người
+grpcurl -plaintext -d '{"table_number":5,"capacity":4}' \
+  localhost:50053 table.TableService/CreateTable
+
+# Danh sách tất cả bàn
+grpcurl -plaintext -d '{"page":1,"page_size":20}' \
+  localhost:50053 table.TableService/ListTables
+
+# Bàn trống, ít nhất 4 chỗ
+grpcurl -plaintext -d '{"min_capacity":4}' \
+  localhost:50053 table.TableService/GetAvailableTables
+
+# Đổi trạng thái bàn sang CLEANING
+grpcurl -plaintext -d '{"table_id":"TABLE_UUID","status":"STATUS_CLEANING"}' \
+  localhost:50053 table.TableService/UpdateTableStatus
+```
+
+---
+
+## Related services
+
+- **order-service** (port 50055) — gọi `GetAvailableTables` khi auto-assign bàn cho order mới

@@ -40,8 +40,9 @@ type verifyTokenRequest struct {
 }
 
 type logoutRequest struct {
-	UserID      string `json:"user_id"`
-	AccessToken string `json:"access_token"`
+	UserID       string `json:"user_id"`
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
 }
 
 type changePasswordRequest struct {
@@ -152,12 +153,16 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	if req.AccessToken == "" {
 		req.AccessToken = bearerToken(r.Header.Get("Authorization"))
 	}
-	if req.UserID == "" && req.AccessToken == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "user_id or access_token is required"})
+	if req.RefreshToken == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "refresh_token is required"})
 		return
 	}
 
-	resp, err := h.authClient.Logout(r.Context(), &authpb.LogoutRequest{UserId: req.UserID, AccessToken: req.AccessToken})
+	resp, err := h.authClient.Logout(r.Context(), &authpb.LogoutRequest{
+		UserId:       req.UserID,
+		AccessToken:  req.AccessToken,
+		RefreshToken: req.RefreshToken,
+	})
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return

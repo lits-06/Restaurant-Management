@@ -14,8 +14,9 @@ var (
 
 // Claims represents JWT claims
 type Claims struct {
-	UserID string `json:"user_id"`
-	Email  string `json:"email"`
+	UserID string   `json:"user_id"`
+	Email  string   `json:"email"`
+	Roles  []string `json:"roles"`
 	jwt.RegisteredClaims
 }
 
@@ -38,11 +39,12 @@ func NewManager(secretKey string, accessTokenMinutes, refreshTokenHours int, iss
 }
 
 // GenerateAccessToken generates a new access token
-func (m *Manager) GenerateAccessToken(userID, email string) (string, error) {
+func (m *Manager) GenerateAccessToken(userID, email string, roles []string) (string, error) {
 	now := time.Now()
 	claims := &Claims{
 		UserID: userID,
 		Email:  email,
+		Roles:  roles,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(now.Add(m.accessTokenDuration)),
 		},
