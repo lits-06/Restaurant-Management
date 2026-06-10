@@ -61,4 +61,4 @@ services/**/*/server
 api-gateway/**/*/server
 !api-gateway/**/*/server/main.go
 
-.claude
+.claude/
