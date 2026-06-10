@@ -60,3 +60,5 @@ services/**/*/server
 !services/**/*/server/main.go
 api-gateway/**/*/server
 !api-gateway/**/*/server/main.go
+
+.claude
