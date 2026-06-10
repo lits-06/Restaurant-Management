@@ -6,13 +6,11 @@ type QueryValue = string | number | boolean | undefined | null;
 
 const buildPath = (path: string, query?: Record<string, QueryValue>) => {
   const url = new URL(path, API_BASE_URL);
-
   Object.entries(query ?? {}).forEach(([key, value]) => {
     if (value !== undefined && value !== null && value !== '') {
       url.searchParams.set(key, String(value));
     }
   });
-
   return url.toString();
 };
 
@@ -35,6 +33,8 @@ const request = async <T>(path: string, init?: RequestInit, query?: Record<strin
 
   return data as T;
 };
+
+// ── DTOs ──────────────────────────────────────────────────────────────────────
 
 export interface MenuItemDto {
   item_id?: string;
@@ -67,21 +67,34 @@ export interface OrderItemDto {
   image_url?: string;
   imageUrl?: string;
   quantity?: number;
+  item_status?: string;
 }
 
 export interface OrderDto {
   order_id?: string;
   orderId?: string;
+  table_id?: string;
+  user_id?: string;
   name?: string;
   phone?: string;
+  notes?: string;
   time?: string | { seconds?: number; nanos?: number };
+  end_time?: string | { seconds?: number; nanos?: number };
   date?: string;
   party_size?: number;
   partySize?: number;
   status?: string;
+  total?: number;
   total_price?: number;
   totalPrice?: number;
   items?: OrderItemDto[];
+}
+
+export interface TableDto {
+  table_id?: string;
+  table_number?: number;
+  capacity?: number;
+  status?: string;
 }
 
 export interface ShiftDto {
@@ -107,13 +120,14 @@ export interface UserDto {
   roles?: string[];
 }
 
+// ── API ───────────────────────────────────────────────────────────────────────
+
 export const authApi = {
   login: (email: string, password: string) =>
     request<{ success?: boolean; access_token?: string; refresh_token?: string; user_id?: string; message?: string }>(
       '/auth/login',
       { method: 'POST', body: JSON.stringify({ email, password }) }
     ),
-
   logout: (refreshToken: string) =>
     request<{ success?: boolean; message?: string }>(
       '/auth/logout',
@@ -131,26 +145,43 @@ export const usersApi = {
 export const menuApi = {
   listItems: (query?: { page?: number; page_size?: number; category_id?: string; keyword?: string }) =>
     request<{ items?: MenuItemDto[]; total?: number }>('/menu/items', undefined, query),
-  createItem: (payload: { name: string; description: string; price: number; category_id?: string; category?: string; image_url: string }) =>
+  createItem: (payload: { name: string; description: string; price: number; category_id?: string; image_url: string }) =>
     request<{ item?: MenuItemDto }>('/menu/items', { method: 'POST', body: JSON.stringify(payload) }),
   updateItem: (itemId: string, payload: { name: string; description: string; price: number; category_id?: string; image_url: string }) =>
     request<{ item?: MenuItemDto }>(`/menu/items/${itemId}`, { method: 'PUT', body: JSON.stringify(payload) }),
-  deleteItem: (itemId: string) => request<{ success?: boolean }>(`/menu/items/${itemId}`, { method: 'DELETE' }),
-  listCategories: () => request<{ categories?: CategoryDto[]; total?: number }>('/menu/categories', undefined, { page_size: 100 }),
+  deleteItem: (itemId: string) =>
+    request<{ success?: boolean }>(`/menu/items/${itemId}`, { method: 'DELETE' }),
+  listCategories: () =>
+    request<{ categories?: CategoryDto[]; total?: number }>('/menu/categories', undefined, { page_size: 100 }),
+};
+
+export const tablesApi = {
+  list: (query?: { page?: number; page_size?: number }) =>
+    request<{ tables?: TableDto[]; total?: number }>('/tables', undefined, query),
 };
 
 export const ordersApi = {
-  list: (query?: { page?: number; page_size?: number; status?: string; keyword?: string }) =>
+  list: (query?: { page?: number; page_size?: number; status?: string; keyword?: string; user_id?: string }) =>
     request<{ orders?: OrderDto[]; total?: number }>('/orders', undefined, query),
-  create: (payload: { name: string; phone: string; time: string; date: string; party_size: number; status: string; items: Array<{ item_id: string; quantity: number }> }) =>
-    request<{ order?: OrderDto }>('/orders', { method: 'POST', body: JSON.stringify(payload) }),
-  update: (orderId: string, payload: { name: string; phone: string; time: string; date: string; party_size: number; status: string; items: Array<{ item_id: string; quantity: number }> }) =>
+  update: (orderId: string, payload: {
+    name: string;
+    phone: string;
+    notes?: string;
+    date: string;
+    time: string;
+    end_time?: string;
+    party_size: number;
+    items: Array<{ item_id: string; quantity: number }>;
+  }) =>
     request<{ order?: OrderDto }>(`/orders/${orderId}`, { method: 'PUT', body: JSON.stringify(payload) }),
   updateStatus: (orderId: string, status: string) =>
     request<{ order?: OrderDto }>(`/orders/${orderId}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+  updateItemStatus: (orderId: string, itemId: string, itemStatus: string) =>
+    request<{ order?: OrderDto }>(`/orders/${orderId}/items/${itemId}/status`, { method: 'PATCH', body: JSON.stringify({ item_status: itemStatus }) }),
   cancel: (orderId: string, reason = '') =>
     request<{ success?: boolean }>(`/orders/${orderId}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) }),
-  delete: (orderId: string) => request<{ success?: boolean }>(`/orders/${orderId}`, { method: 'DELETE' }),
+  delete: (orderId: string) =>
+    request<{ success?: boolean }>(`/orders/${orderId}`, { method: 'DELETE' }),
 };
 
 export const scheduleApi = {

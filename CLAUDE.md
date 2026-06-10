@@ -544,15 +544,21 @@ src/
 ```
 src/
   store/          # adminAuthStore.ts
-  components/     # Footer, HeaderDashboard, KPIGrid, PerformanceTable, Sidebar (shows user info + logout)
+  components/     # Footer, HeaderDashboard (year/month picker), KPIGrid, PerformanceTable, Sidebar
   pages/
     Login.tsx            # wired to authApi; validates staff role before granting access
-    AnalyticsOverview.tsx
-    MenuManagement.tsx
-    OrdersManagement.tsx
-    MonthlyScheduler.tsx
+    AnalyticsOverview.tsx  # real month filtering, trend vs prev month, status breakdown
+    MenuManagement.tsx     # CRUD with category dropdown from API
+    OrdersManagement.tsx   # full order mgmt: status update, notes, end_time, table name, item_status
+    MonthlyScheduler.tsx   # monthly shift calendar grid
   services/       # api.ts (injects auth token in all requests), auth.ts
 ```
+
+**`services/api.ts` key exports:**
+- `ordersApi`: `list`, `update` (notes+end_time), `updateStatus`, `updateItemStatus`, `cancel`, `delete`
+- `tablesApi.list` — load all tables for UUID → table_number resolution
+- `menuApi`, `scheduleApi`, `usersApi`, `authApi`
+- `TableDto`: `table_id, table_number, capacity, status`
 
 ---
 
@@ -643,10 +649,17 @@ Binaries are compiled locally and volume-mounted as `./server` inside each Alpin
 - **Kitchen app**: `SchedulePage.tsx` — self-service shift registration/deletion. `scheduleApi` added to `gateway.api.ts`. App.tsx adds 📅 Lịch tab to floating switcher for all roles.
 - **`docker-compose.yml`**: staff-service block → schedule-service. api-gateway env `SCHEDULE_SERVICE_*`.
 
+### Admin dashboard update (2026-06-10)
+- **`HeaderDashboard.tsx`**: Rewritten — accepts `year/month/onChange` props; functional year navigation; click month = apply immediately; future months disabled.
+- **`AnalyticsOverview.tsx`**: Real month filtering — loads 500 orders once, filters client-side by selected month. 4 KPIs (revenue, orders, avg/order, covers) with trend % vs previous month. Order status breakdown row (Pending/Confirmed/Completed/Cancelled). Top 5 dishes ranked by revenue in selected month. Currency changed to VNĐ.
+- **`OrdersManagement.tsx`**: Full update — table row shows `end_time`, table name (`Bàn X` resolved from `tablesApi`), notes (italic gold). Drawer shows notes banner, full `table_id`, item_status badges (Chờ/Đang nấu/Xong/Đã mang), status action buttons (Xác nhận/Hoàn thành/Hủy) via `PATCH /orders/{id}/status`. Edit booking modal adds `end_time` and `notes` fields. Edit items modal replaces hardcoded text input with real menu search dropdown.
+- **`MenuManagement.tsx`**: Fixed duplicate `mapMenuItem` bug. Category input changed to `<select>` dropdown from `menuApi.listCategories`. Payload now sends correct `category_id` (UUID), not category name.
+- **`services/api.ts`**: Added `item_status` to `OrderItemDto`; added `table_id`, `user_id`, `notes`, `end_time`, `total` to `OrderDto`; added `tablesApi`; updated `ordersApi.update` to accept `notes`/`end_time` (removed `status` — use `updateStatus` instead); added `ordersApi.updateItemStatus`.
+
 ### Known gaps / TODO
 - Operating hours (10:00–22:00) enforced only in frontend — no backend validation in order-service
-- Admin dashboard (`OrdersManagement.tsx`) may need update to reflect new order fields (`notes`, `end_time`, `user_id`, auto-assigned `table_id`, `item_status`)
 - No role-based middleware for menu/schedule/table/user routes in api-gateway — only order endpoints have auth
 - `table_id` trong notification/kitchen app hiển thị dạng UUID cắt ngắn — chưa resolve `table_number` từ table-service
 - Kitchen app không có auto-reconnect khi WebSocket mất kết nối
 - schedule-service không validate trùng ca (cùng user, cùng ngày, cùng giờ)
+- AnalyticsOverview load max 500 orders — nếu hệ thống có >500 orders thì thống kê theo tháng sẽ thiếu

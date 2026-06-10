@@ -59,15 +59,14 @@ src/
 
 ## Routing (Sidebar navigation)
 
-| Page | Roles được dùng |
-|------|----------------|
-| AnalyticsOverview | Tất cả staff |
-| MenuManagement | ADMIN, MANAGER |
-| OrdersManagement | Tất cả staff |
-| StaffManagement | ADMIN, MANAGER |
-| WeeklyScheduler | ADMIN, MANAGER |
+| Tab label | Component | Ghi chú |
+|-----------|-----------|---------|
+| Dashboard | `AnalyticsOverview.tsx` | Tất cả staff |
+| Menu | `MenuManagement.tsx` | ADMIN, MANAGER (chưa block route) |
+| Orders | `OrdersManagement.tsx` | Tất cả staff |
+| Staff | `MonthlyScheduler.tsx` | ADMIN, MANAGER (chưa block route) |
 
-> Frontend hiện tại **chưa block routes theo role** — mọi staff đều thấy tất cả menu items. Cần implement role-based sidebar visibility.
+> Frontend hiện tại **chưa block routes theo role** — mọi staff đều thấy tất cả tab.
 
 ---
 
@@ -81,30 +80,49 @@ src/
 - Lưu vào `adminAuthStore` → App.tsx re-render dashboard
 
 ### AnalyticsOverview (`src/pages/AnalyticsOverview.tsx`)
-- KPI cards: tổng đơn, doanh thu, tỷ lệ hoàn thành (mock data)
-- Chart doanh thu theo thời gian (mock data)
-- **Chưa kết nối report-service**
+- **Month picker**: chọn năm/tháng → filter dữ liệu theo tháng đó (click tháng = apply ngay)
+- Load 500 orders + 100 menu items từ API một lần khi mount; filter client-side theo tháng được chọn
+- **4 KPI card** (dữ liệu thật, so sánh trend % với tháng trước):
+  - Doanh thu tháng — tổng `order.total` hoặc sum items
+  - Tổng đơn đặt bàn
+  - Giá trị TB/đơn
+  - Tổng khách phục vụ (sum `party_size`)
+- **Breakdown trạng thái** đơn trong tháng: Chờ xác nhận / Đã xác nhận / Hoàn thành / Đã hủy
+- **Bảng Top 5 món** theo doanh thu trong tháng đang xem
+- Đơn vị tiền: VNĐ (`toLocaleString('vi-VN')đ`)
 
 ### MenuManagement (`src/pages/MenuManagement.tsx`)
-- Load menu items: `GET /menu/items` (tất cả, page_size lớn)
-- Filter theo category tab
-- Tìm kiếm theo tên
-- **Thêm món:** Modal form → `POST /menu/items` (`name`, `price`, `description`, `image`, `category`)
+- Load menu items: `GET /menu/items?page_size=100`
+- Load categories: `GET /menu/categories` → dùng làm tabs filter và dropdown trong modal
+- Filter theo category tab + tìm kiếm theo tên
+- **Thêm món:** Modal form → `POST /menu/items` (`name`, `price`, `description`, `image_url`, `category_id`)
 - **Sửa món:** Modal form → `PUT /menu/items/{id}`
-- **Xóa món:** `DELETE /menu/items/{id}`
-- Hiển thị ảnh món (`image_url`), giá, tên, category
-- VIP badge nếu giá ≥ 1.000.000đ
+- **Xóa món:** `DELETE /menu/items/{id}` + confirm dialog
+- Hiển thị ảnh, giá (VNĐ), tên, category name, VIP badge nếu ≥ 1.000.000đ
+- **Category input là `<select>` dropdown** từ API (không phải text input) — payload gửi đúng `category_id` UUID
 
 ### OrdersManagement (`src/pages/OrdersManagement.tsx`)
-- Load orders: `GET /orders?page_size=100&status={filter}&keyword={search}`
-- Filter theo status (All/Confirmed/Pending/Completed/Cancelled)
-- Tìm kiếm theo tên khách
-- Pagination (5 đơn/trang)
-- **Xem chi tiết:** Slide-over drawer — tên, SĐT, giờ, party size, danh sách món
-- **Cập nhật thông tin đặt chỗ:** Modal edit → `PUT /orders/{id}` (tên, SĐT, ngày, giờ, party size, status)
-- **Sửa món ăn trong order:** Modal → thêm/xóa items → `PUT /orders/{id}` với items mới
-- Hiển thị: ID, tên khách, SĐT, ngày giờ, party size, status, tổng tiền
-- **Chưa hiển thị:** `notes`, `end_time`, `user_id`, `item_status` (các field mới chưa được update)
+- Load orders: `GET /orders?page_size=100`
+- Load tables: `GET /tables?page_size=100` → resolve `table_id` → `"Bàn X"` (fallback UUID 8 ký tự)
+- Load menu items: `GET /menu/items?page_size=200` → dùng cho search picker trong modal sửa món
+- Filter theo status + tìm kiếm theo tên khách; pagination 5 đơn/trang
+- Nút **Làm mới** để reload orders
+
+**Bảng hiển thị:**
+- Tên khách + SĐT + ghi chú ngắn (italic vàng nếu `notes` không trống)
+- Giờ bắt đầu–kết thúc + ngày (`19:00 – 21:00`)
+- Tên bàn (`Bàn 5`) + số khách
+- Status badge
+
+**3 action buttons mỗi hàng:**
+1. `edit_note` → **Modal sửa thông tin**: tên, SĐT, ghi chú đặc biệt, ngày, giờ bắt đầu/kết thúc, số khách → `PUT /orders/{id}`
+2. `restaurant` → **Modal sửa món**: tăng/giảm/xóa items + search box tìm từ menu thật → `PUT /orders/{id}`
+3. `more_vert` → **Drawer chi tiết**: thông tin đặt bàn, ghi chú (banner vàng), `item_status` badge từng món (Chờ/Đang nấu/Xong/Đã mang), **nút cập nhật trạng thái**, tổng tiền
+
+**Cập nhật trạng thái đơn (trong drawer):**
+- Pending → nút **Xác nhận đơn** → `PATCH /orders/{id}/status { status: "Confirmed" }`
+- Confirmed → nút **Hoàn thành** → `PATCH /orders/{id}/status { status: "Completed" }`
+- Pending/Confirmed → nút **Hủy đơn** → `PATCH /orders/{id}/status { status: "Cancelled" }`
 
 ### MonthlyScheduler (`src/pages/MonthlyScheduler.tsx`)
 - Thay thế `StaffManagement.tsx` và `WeeklyScheduler.tsx` (đã xóa)
@@ -129,9 +147,13 @@ src/
 ## API Service (`src/services/api.ts`)
 - Native `fetch` wrapper với `baseURL: http://localhost:8080` (không dùng axios)
 - Tự động inject `Authorization: Bearer {accessToken}` từ `adminAuthStore`
-- Exports: `menuApi`, `ordersApi`, `scheduleApi`, `usersApi`, `authApi`
+- Exports: `menuApi`, `ordersApi`, `tablesApi`, `scheduleApi`, `usersApi`, `authApi`
+- `ordersApi.update(id, payload)` — payload gồm `name, phone, notes?, date, time, end_time?, party_size, items[]` (**không có `status`** — dùng `updateStatus`)
+- `ordersApi.updateStatus(id, status)` → `PATCH /orders/{id}/status`
+- `ordersApi.updateItemStatus(orderId, itemId, itemStatus)` → `PATCH /orders/{id}/items/{itemId}/status`
+- `tablesApi.list({ page_size? })` → `GET /tables` (dùng để resolve `table_id` → `table_number`)
 - `scheduleApi.list/create/update/delete` → `/schedule/shifts`
-- `usersApi.listAll()` → `GET /users?page_size=200` (dùng trong MonthlyScheduler để load staff picker)
+- `usersApi.listAll()` → `GET /users?page_size=200`
 
 ---
 
@@ -150,14 +172,12 @@ src/
 
 ## Vấn đề chưa giải quyết / Có thể triển khai thêm
 
-- **OrdersManagement chưa hiển thị `notes`, `end_time`, `user_id`, `item_status`** — cần update sau khi thêm các field này
-- **Role-based route guard** chưa implement — CHEF/WAITER có thể truy cập MenuManagement
-- AnalyticsOverview dùng mock data — chưa kết nối report-service
+- **Role-based route guard** chưa implement — CHEF/WAITER có thể truy cập MenuManagement, Staff tab
 - Không có token refresh — khi access token hết hạn phải login lại
-- Không có confirmation dialog khi xóa menu (có thể xóa nhầm)
-- Không có pagination cho menu (load hết 1 lần)
-- OrdersManagement không có `UpdateOrderStatus` cho từng order (chỉ có PUT toàn bộ order)
-- Không có `UpdateOrderItemStatus` trong admin dashboard — CHEF/WAITER phải dùng kitchen app
-- Không có real-time update khi có order mới (phải reload thủ công)
+- Không có pagination cho menu (load hết 100 items một lần)
+- Không có real-time update khi có order mới (phải bấm Làm mới thủ công)
 - MonthlyScheduler không hiển thị tên nhân viên nếu `/users` API lỗi (fallback về UUID)
 - MonthlyScheduler không validate trùng ca (cùng nhân viên, cùng giờ)
+- AnalyticsOverview load max 500 orders — nếu >500 orders thì thống kê theo tháng có thể thiếu
+- OrdersManagement chưa có `UpdateOrderItemStatus` trong admin (CHEF/WAITER dùng kitchen app)
+- Không có `user_id` hiển thị trong OrdersManagement (chỉ hiển thị tên khách)
