@@ -1,7 +1,8 @@
 package config
 
 import (
-	"github.com/spf13/viper"
+	"os"
+	"strconv"
 )
 
 // Config holds the configuration for Table Service.
@@ -24,25 +25,36 @@ type DatabaseConfig struct {
 	SSLMode  string
 }
 
-// Load loads the configuration.
+// Load loads configuration from environment variables.
 func Load() (*Config, error) {
-	viper.SetConfigName("config")
-	viper.SetConfigType("yaml")
-	viper.AddConfigPath(".")
-	viper.AddConfigPath("./config")
-	viper.AddConfigPath("../../")
+	return &Config{
+		Server: ServerConfig{
+			Port:        getEnvAsInt("SERVER_PORT", 50053),
+			Environment: getEnv("ENVIRONMENT", "development"),
+		},
+		Database: DatabaseConfig{
+			Host:     getEnv("DATABASE_HOST", "localhost"),
+			Port:     getEnvAsInt("DATABASE_PORT", 5432),
+			User:     getEnv("DATABASE_USER", "restaurant_user"),
+			Password: getEnv("DATABASE_PASSWORD", "restaurant_pass"),
+			Database: getEnv("DATABASE_NAME", "restaurant_db"),
+			SSLMode:  getEnv("DATABASE_SSLMODE", "disable"),
+		},
+	}, nil
+}
 
-	viper.AutomaticEnv()
-
-	if err := viper.ReadInConfig(); err != nil {
-		// Config file not found, use defaults.
-		return &Config{}, nil
+func getEnv(key, defaultValue string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
 	}
+	return defaultValue
+}
 
-	var cfg *Config
-	if err := viper.Unmarshal(&cfg); err != nil {
-		return nil, err
+func getEnvAsInt(key string, defaultValue int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
 	}
-
-	return cfg, nil
+	return defaultValue
 }

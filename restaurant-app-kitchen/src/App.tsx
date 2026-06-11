@@ -49,7 +49,7 @@ export default function App() {
               activeView === 'CHEF' ? 'bg-orange-600 text-white' : 'text-gray-400 hover:text-white'
             }`}
           >
-            🍳 Bếp
+            🍳 Kitchen
           </button>
         )}
         {(canSwitchView || user.roles.includes('WAITER')) && activeView !== 'WAITER' && (
@@ -59,7 +59,7 @@ export default function App() {
               activeView === 'WAITER' ? 'bg-green-600 text-white' : 'text-gray-400 hover:text-white'
             }`}
           >
-            🛎 Phục vụ
+            🛎 Service
           </button>
         )}
         <button
@@ -68,7 +68,7 @@ export default function App() {
             activeView === 'SCHEDULE' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'
           }`}
         >
-          📅 Lịch
+          📅 Schedule
         </button>
       </div>
 

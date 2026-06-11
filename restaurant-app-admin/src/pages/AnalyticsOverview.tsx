@@ -25,10 +25,10 @@ const getOrderTotal = (order: OrderDto) => {
 };
 
 const trendLabel = (curr: number, prev: number): { label: string; isUp: boolean | null } => {
-  if (prev === 0) return { label: 'Chưa có dữ liệu tháng trước', isUp: null };
+  if (prev === 0) return { label: 'No data for previous month', isUp: null };
   const pct = ((curr - prev) / prev) * 100;
   const sign = pct >= 0 ? '+' : '';
-  return { label: `${sign}${pct.toFixed(1)}% so với tháng trước`, isUp: pct >= 0 };
+  return { label: `${sign}${pct.toFixed(1)}% vs previous month`, isUp: pct >= 0 };
 };
 
 // ── component ──────────────────────────────────────────────────────────────────
@@ -55,7 +55,7 @@ const AnalyticsOverview: React.FC = () => {
         setAllOrders(ordersRes.orders ?? []);
         setMenuItems(menuRes.items ?? []);
       })
-      .catch(err => { if (active) setError(err instanceof Error ? err.message : 'Không thể tải dữ liệu.'); })
+      .catch(err => { if (active) setError(err instanceof Error ? err.message : 'Failed to load data.'); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, []);
@@ -98,28 +98,28 @@ const AnalyticsOverview: React.FC = () => {
 
   const kpis: KPIItem[] = [
     {
-      title: 'Doanh thu tháng',
+      title: 'Monthly Revenue',
       value: fmtVnd(revenue),
       trend: revTrend.label,
       isUp: revTrend.isUp,
       isPrimary: true,
     },
     {
-      title: 'Tổng đơn đặt bàn',
+      title: 'Total Reservations',
       value: monthOrders.length.toLocaleString('vi-VN'),
       trend: orderTrend.label,
       isUp: orderTrend.isUp,
       isPrimary: false,
     },
     {
-      title: 'Giá trị TB / đơn',
+      title: 'Avg. Value / Order',
       value: fmtVnd(avgOrder),
       trend: avgTrend.label,
       isUp: avgTrend.isUp,
       isPrimary: false,
     },
     {
-      title: 'Tổng khách phục vụ',
+      title: 'Total Covers',
       value: covers.toLocaleString('vi-VN'),
       trend: coversTrend.label,
       isUp: coversTrend.isUp,
@@ -164,7 +164,7 @@ const AnalyticsOverview: React.FC = () => {
       <Header year={year} month={month} onChange={(y, m) => { setYear(y); setMonth(m); }} />
 
       {error && <p className="text-sm text-red-600">{error}</p>}
-      {loading && <p className="text-sm text-on-surface-variant">Đang tải dữ liệu...</p>}
+      {loading && <p className="text-sm text-on-surface-variant">Loading data...</p>}
 
       <KPIGrid kpis={kpis} />
 
@@ -172,10 +172,10 @@ const AnalyticsOverview: React.FC = () => {
       {monthOrders.length > 0 && (
         <div className="grid grid-cols-4 gap-4">
           {[
-            { label: 'Chờ xác nhận', count: pendingCount,   color: 'bg-amber-50 border-amber-200 text-amber-800' },
-            { label: 'Đã xác nhận',  count: confirmedCount, color: 'bg-blue-50 border-blue-200 text-blue-800' },
-            { label: 'Hoàn thành',   count: completedCount, color: 'bg-green-50 border-green-200 text-green-800' },
-            { label: 'Đã hủy',       count: cancelledCount, color: 'bg-red-50 border-red-200 text-red-800' },
+            { label: 'Pending',   count: pendingCount,   color: 'bg-amber-50 border-amber-200 text-amber-800' },
+            { label: 'Confirmed', count: confirmedCount, color: 'bg-blue-50 border-blue-200 text-blue-800' },
+            { label: 'Completed', count: completedCount, color: 'bg-green-50 border-green-200 text-green-800' },
+            { label: 'Cancelled', count: cancelledCount, color: 'bg-red-50 border-red-200 text-red-800' },
           ].map(({ label, count, color }) => (
             <div key={label} className={`p-4 rounded-xl border ${color} flex justify-between items-center`}>
               <span className="text-xs font-semibold">{label}</span>

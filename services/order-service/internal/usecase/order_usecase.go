@@ -187,11 +187,22 @@ func (uc *OrderUseCase) UpdateOrder(ctx context.Context, orderID, tableID, name,
 	}
 
 	if itemRequests != nil {
-		items, err := uc.resolveItems(ctx, itemRequests)
+		newItems, err := uc.resolveItems(ctx, itemRequests)
 		if err != nil {
 			return nil, err
 		}
-		order.Items = items
+		// Preserve item_status for items already in the order so COOKING/READY/SERVED
+		// status is not reset to PENDING by an admin edit.
+		existingStatus := make(map[string]domain.ItemStatus)
+		for _, existing := range order.Items {
+			existingStatus[existing.ItemID] = existing.ItemStatus
+		}
+		for _, item := range newItems {
+			if status, ok := existingStatus[item.ItemID]; ok {
+				item.ItemStatus = status
+			}
+		}
+		order.Items = newItems
 	}
 
 	order.Total = order.TotalPrice()
@@ -300,6 +311,17 @@ func (uc *OrderUseCase) UpdateOrderItemStatus(ctx context.Context, orderID, item
 	}
 	// Return fresh order so caller has up-to-date item list.
 	return uc.orderRepo.GetByID(ctx, orderID)
+}
+
+// DeleteOrder permanently deletes an order and its items.
+func (uc *OrderUseCase) DeleteOrder(ctx context.Context, orderID string) error {
+	if _, err := uc.orderRepo.GetByID(ctx, orderID); err != nil {
+		return fmt.Errorf("failed to get order: %w", err)
+	}
+	if err := uc.orderRepo.Delete(ctx, orderID); err != nil {
+		return fmt.Errorf("failed to delete order: %w", err)
+	}
+	return nil
 }
 
 // RemoveOrderItem removes an item from an order.

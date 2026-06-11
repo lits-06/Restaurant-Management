@@ -10,10 +10,12 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, user, onLogout }) => {
   const menuItems = [
-    { icon: 'dashboard', label: 'Dashboard' },
+    { icon: 'dashboard',       label: 'Dashboard' },
     { icon: 'restaurant_menu', label: 'Menu' },
-    { icon: 'receipt_long', label: 'Orders' },
-    { icon: 'calendar_month', label: 'Staff' },
+    { icon: 'receipt_long',    label: 'Orders' },
+    { icon: 'calendar_month',  label: 'Staff' },
+    { icon: 'table_restaurant',label: 'Tables' },
+    { icon: 'group',           label: 'Users' },
   ];
 
   const initials = (user.full_name || user.username || 'A')
@@ -76,7 +78,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, user, onLogo
           className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[#4d4635] hover:bg-[#e1e3e4] transition-all text-xs font-semibold"
         >
           <span className="material-symbols-outlined text-base">logout</span>
-          Đăng xuất
+          Sign Out
         </button>
       </div>
     </aside>

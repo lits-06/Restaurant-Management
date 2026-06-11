@@ -25,7 +25,7 @@ export default function LoginPage({ onSuccess }: Props) {
       const userRes = await usersApi.getOne(loginRes.user_id)
       const user = userRes.user
       if (!user || !hasKitchenAccess(user.roles ?? [])) {
-        throw new Error('Tài khoản không có quyền truy cập Kitchen Display')
+        throw new Error('Account does not have Kitchen Display access')
       }
       const kitchenUser: KitchenUser = {
         user_id: user.user_id ?? '',
@@ -37,7 +37,7 @@ export default function LoginPage({ onSuccess }: Props) {
       setAuth(kitchenUser, loginRes.access_token, loginRes.refresh_token ?? '')
       onSuccess()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Đăng nhập thất bại')
+      setError(err instanceof Error ? err.message : 'Sign in failed')
     } finally {
       setLoading(false)
     }
@@ -49,7 +49,7 @@ export default function LoginPage({ onSuccess }: Props) {
         <div className="text-center mb-8">
           <div className="text-4xl mb-2">🍳</div>
           <h1 className="text-2xl font-bold text-white">Kitchen Display</h1>
-          <p className="text-gray-400 text-sm mt-1">Dành cho CHEF và WAITER</p>
+          <p className="text-gray-400 text-sm mt-1">For CHEF and WAITER staff</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -65,7 +65,7 @@ export default function LoginPage({ onSuccess }: Props) {
             />
           </div>
           <div>
-            <label className="block text-sm text-gray-400 mb-1">Mật khẩu</label>
+            <label className="block text-sm text-gray-400 mb-1">Password</label>
             <input
               type="password"
               value={password}
@@ -85,7 +85,7 @@ export default function LoginPage({ onSuccess }: Props) {
             disabled={loading}
             className="w-full bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white font-semibold py-2.5 rounded-lg transition-colors"
           >
-            {loading ? 'Đang đăng nhập...' : 'Đăng nhập'}
+            {loading ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
       </div>

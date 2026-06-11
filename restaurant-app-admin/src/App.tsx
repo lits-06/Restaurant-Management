@@ -5,6 +5,8 @@ import AnalyticsOverview from './pages/AnalyticsOverview';
 import MenuManagement from './pages/MenuManagement';
 import OrdersManagement from './pages/OrdersManagement';
 import MonthlyScheduler from './pages/MonthlyScheduler';
+import TableManagement from './pages/TableManagement';
+import UserManagement from './pages/UserManagement';
 import LoginPage from './pages/Login';
 import { useAdminAuthStore } from './store/adminAuthStore';
 import { authApi } from './services/api';
@@ -50,6 +52,12 @@ const App: React.FC = () => {
           </div>
           <div className={activeTab === 'Staff' ? 'block' : 'hidden'}>
             <MonthlyScheduler />
+          </div>
+          <div className={activeTab === 'Tables' ? 'block' : 'hidden'}>
+            <TableManagement />
+          </div>
+          <div className={activeTab === 'Users' ? 'block' : 'hidden'}>
+            <UserManagement />
           </div>
         </div>
         <Footer />

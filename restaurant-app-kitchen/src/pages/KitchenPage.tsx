@@ -11,10 +11,10 @@ const STATUS_STYLE: Record<string, string> = {
 }
 
 const STATUS_LABEL: Record<string, string> = {
-  PENDING: 'Chờ',
-  COOKING: 'Đang nấu',
-  READY:   'Xong',
-  SERVED:  'Đã mang',
+  PENDING: 'Pending',
+  COOKING: 'Cooking',
+  READY:   'Ready',
+  SERVED:  'Served',
 }
 
 interface Props {
@@ -54,13 +54,13 @@ export default function KitchenPage({ onLogout }: Props) {
         setOrders((prev) => prev.map((o) => (o.order_id === orderId ? res.order! : o)))
       }
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Lỗi cập nhật')
+      alert(err instanceof Error ? err.message : 'Update failed')
     }
   }
 
   const nextAction = (item: OrderItemDto): { label: string; next: string } | null => {
-    if (item.item_status === 'PENDING')  return { label: 'Bắt đầu nấu', next: 'COOKING' }
-    if (item.item_status === 'COOKING')  return { label: 'Đã xong ✓', next: 'READY' }
+    if (item.item_status === 'PENDING')  return { label: 'Start Cooking', next: 'COOKING' }
+    if (item.item_status === 'COOKING')  return { label: 'Done ✓', next: 'READY' }
     return null
   }
 
@@ -75,7 +75,7 @@ export default function KitchenPage({ onLogout }: Props) {
         <div className="flex items-center gap-3">
           <span className="text-2xl">🍳</span>
           <div>
-            <h1 className="font-bold text-lg leading-tight">Bếp — Kitchen</h1>
+            <h1 className="font-bold text-lg leading-tight">Kitchen</h1>
             <p className="text-xs text-gray-400">{user?.full_name}</p>
           </div>
         </div>
@@ -83,9 +83,9 @@ export default function KitchenPage({ onLogout }: Props) {
           <span className={`text-xs px-2 py-1 rounded-full ${connected ? 'bg-green-800 text-green-300' : 'bg-red-900 text-red-300'}`}>
             {connected ? '● Live' : '○ Offline'}
           </span>
-          <span className="text-sm text-gray-400">{activeOrders.length} order đang chờ</span>
+          <span className="text-sm text-gray-400">{activeOrders.length} orders pending</span>
           <button onClick={onLogout} className="text-sm text-gray-400 hover:text-white transition-colors">
-            Đăng xuất
+            Sign Out
           </button>
         </div>
       </header>
@@ -93,17 +93,17 @@ export default function KitchenPage({ onLogout }: Props) {
       {/* Notification banner */}
       {notifications[0]?.type === 'ORDER_CONFIRMED' && (
         <div className="bg-orange-600 px-6 py-2 text-sm font-medium animate-pulse">
-          🔔 Order mới: {notifications[0].message}
+          🔔 New order: {notifications[0].message}
         </div>
       )}
 
       <main className="p-6">
         {loading ? (
-          <p className="text-gray-400 text-center py-12">Đang tải...</p>
+          <p className="text-gray-400 text-center py-12">Loading...</p>
         ) : activeOrders.length === 0 ? (
           <div className="text-center py-16 text-gray-500">
             <div className="text-5xl mb-4">✅</div>
-            <p className="text-lg">Không có order nào đang chờ</p>
+            <p className="text-lg">No pending orders</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -135,7 +135,7 @@ function OrderCard({
         <div>
           <p className="font-semibold text-white">{order.name}</p>
           <p className="text-xs text-gray-400 mt-0.5">
-            {order.party_size} người · Bàn: <span className="text-orange-400 font-mono text-xs">{order.table_id.slice(0, 8)}…</span>
+            {order.party_size} guests · Table: <span className="text-orange-400 font-mono text-xs">{order.table_id.slice(0, 8)}…</span>
           </p>
           {order.notes && (
             <p className="text-xs text-amber-300 mt-1 bg-amber-900/30 rounded px-2 py-0.5">
@@ -144,9 +144,9 @@ function OrderCard({
           )}
         </div>
         <div className="flex gap-1 text-xs flex-wrap justify-end">
-          {pendingCount > 0 && <span className="bg-gray-700 text-gray-300 px-1.5 py-0.5 rounded">{pendingCount} chờ</span>}
-          {cookingCount > 0 && <span className="bg-amber-700 text-white px-1.5 py-0.5 rounded">{cookingCount} nấu</span>}
-          {readyCount > 0   && <span className="bg-green-700 text-white px-1.5 py-0.5 rounded">{readyCount} xong</span>}
+          {pendingCount > 0 && <span className="bg-gray-700 text-gray-300 px-1.5 py-0.5 rounded">{pendingCount} pending</span>}
+          {cookingCount > 0 && <span className="bg-amber-700 text-white px-1.5 py-0.5 rounded">{cookingCount} cooking</span>}
+          {readyCount > 0   && <span className="bg-green-700 text-white px-1.5 py-0.5 rounded">{readyCount} done</span>}
         </div>
       </div>
 
@@ -179,7 +179,7 @@ function OrderCard({
 }
 
 function nextAction(item: OrderItemDto): { label: string; next: string } | null {
-  if (item.item_status === 'PENDING')  return { label: 'Bắt đầu nấu', next: 'COOKING' }
-  if (item.item_status === 'COOKING')  return { label: 'Đã xong ✓', next: 'READY' }
+  if (item.item_status === 'PENDING')  return { label: 'Start Cooking', next: 'COOKING' }
+  if (item.item_status === 'COOKING')  return { label: 'Done ✓', next: 'READY' }
   return null
 }

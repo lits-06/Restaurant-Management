@@ -121,6 +121,7 @@ services:
       - ./services/order-service:/app/order-service
     depends_on:
       - postgres
+      - menu-service
       - table-service
       - notification-service
 
@@ -181,6 +182,7 @@ services:
       - TABLE_SERVICE_PORT=50053
       - USER_SERVICE_HOST=user-service
       - USER_SERVICE_PORT=50056
+      - AUTH_SERVICE_PORT=50051
       - NOTIFICATION_SERVICE_HOST=notification-service
       - NOTIFICATION_SERVICE_PORT=50058
       - ENVIRONMENT=development
@@ -191,6 +193,7 @@ services:
     depends_on:
       - auth-service
       - menu-service
+      - schedule-service
       - order-service
       - table-service
       - user-service

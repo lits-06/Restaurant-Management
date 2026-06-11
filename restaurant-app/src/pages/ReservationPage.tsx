@@ -204,12 +204,12 @@ const ReservationPage: React.FC<ReservationPageProps> = ({ onNeedLogin }) => {
     setSubmitError('');
 
     if (!customerName.trim() || !phoneNumber.trim()) {
-      setSubmitError('Vui lòng nhập họ tên và số điện thoại trước khi hoàn tất.');
+      setSubmitError('Please enter your name and phone number before completing.');
       return;
     }
 
     if (selectedEndTime <= selectedTime) {
-      setSubmitError('Giờ kết thúc phải sau giờ bắt đầu.');
+      setSubmitError('End time must be after start time.');
       return;
     }
 
@@ -239,7 +239,7 @@ const ReservationPage: React.FC<ReservationPageProps> = ({ onNeedLogin }) => {
 
       goToStep(3);
     } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : 'Không thể gửi đặt bàn đến máy chủ.');
+      setSubmitError(error instanceof Error ? error.message : 'Unable to submit reservation to server.');
     } finally {
       setIsSubmitting(false);
     }
@@ -269,7 +269,7 @@ const ReservationPage: React.FC<ReservationPageProps> = ({ onNeedLogin }) => {
               <div className="flex-1">
                 <div className="flex justify-between items-start">
                   <h4 className="font-bold text-sm">{dish.name}</h4>
-                  <span className="text-primary font-bold text-xs ml-2">${dish.price}</span>
+                  <span className="text-primary font-bold text-xs ml-2">{dish.price.toLocaleString('vi-VN')} ₫</span>
                 </div>
                 <p className="text-[10px] text-on-surface-variant leading-tight mt-1 line-clamp-2">
                   {dish.description}
@@ -530,7 +530,7 @@ const ReservationPage: React.FC<ReservationPageProps> = ({ onNeedLogin }) => {
                         max="22:00"
                         onChange={(e) => setSelectedTime(e.target.value)}
                       />
-                      <p className="text-xs text-on-surface-variant">Nhà hàng mở cửa 10:00 – 22:00</p>
+                      <p className="text-xs text-on-surface-variant">Restaurant open 10:00 – 22:00</p>
                     </div>
                     {/* End time */}
                     <div className="space-y-2">
@@ -550,8 +550,8 @@ const ReservationPage: React.FC<ReservationPageProps> = ({ onNeedLogin }) => {
                         onChange={(e) => setSelectedEndTime(e.target.value)}
                       />
                       {selectedEndTime <= selectedTime
-                        ? <p className="text-xs text-error">Phải sau giờ bắt đầu</p>
-                        : <p className="text-xs text-on-surface-variant">Mặc định +2h, điều chỉnh nếu cần</p>
+                        ? <p className="text-xs text-error">Must be after start time</p>
+                        : <p className="text-xs text-on-surface-variant">Default +2h, adjust if needed</p>
                       }
                     </div>
                   </div>
@@ -565,7 +565,7 @@ const ReservationPage: React.FC<ReservationPageProps> = ({ onNeedLogin }) => {
                       </p>
                       {menuError && (
                         <p className="text-xs text-error">
-                          Menu API chưa sẵn sàng, đang hiển thị dữ liệu mẫu: {menuError}
+                          Menu API unavailable, showing sample data: {menuError}
                         </p>
                       )}
                     </div>
@@ -605,36 +605,36 @@ const ReservationPage: React.FC<ReservationPageProps> = ({ onNeedLogin }) => {
                 <div className="transition-all duration-300">
                   {/* Thông tin khách hàng */}
                   <section className="mb-12 border-b border-outline-variant/30 pb-10">
-                    <h2 className="font-headline-lg text-headline-lg mb-8 text-xl font-bold">Thông tin khách hàng</h2>
+                    <h2 className="font-headline-lg text-headline-lg mb-8 text-xl font-bold">Guest Information</h2>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="space-y-2">
-                        <label className="block text-sm font-medium text-on-surface" htmlFor="full-name">Họ và Tên</label>
-                        <input 
-                          className="w-full px-4 py-3 bg-surface border border-outline-variant rounded-lg focus:ring-1 focus:ring-primary focus:border-primary font-body-md outline-none transition-all" 
-                          id="full-name" 
-                          placeholder="Nguyễn Văn A" 
+                        <label className="block text-sm font-medium text-on-surface" htmlFor="full-name">Full Name</label>
+                        <input
+                          className="w-full px-4 py-3 bg-surface border border-outline-variant rounded-lg focus:ring-1 focus:ring-primary focus:border-primary font-body-md outline-none transition-all"
+                          id="full-name"
+                          placeholder="John Doe"
                           type="text"
                           value={customerName}
                           onChange={(e) => setCustomerName(e.target.value)}
                         />
                       </div>
                       <div className="space-y-2">
-                        <label className="block text-sm font-medium text-on-surface" htmlFor="phone-number">Số điện thoại</label>
-                        <input 
-                          className="w-full px-4 py-3 bg-surface border border-outline-variant rounded-lg focus:ring-1 focus:ring-primary focus:border-primary font-body-md outline-none transition-all" 
-                          id="phone-number" 
-                          placeholder="090 123 4567" 
+                        <label className="block text-sm font-medium text-on-surface" htmlFor="phone-number">Phone Number</label>
+                        <input
+                          className="w-full px-4 py-3 bg-surface border border-outline-variant rounded-lg focus:ring-1 focus:ring-primary focus:border-primary font-body-md outline-none transition-all"
+                          id="phone-number"
+                          placeholder="+1 555 123 4567"
                           type="tel"
                           value={phoneNumber}
                           onChange={(e) => setPhoneNumber(e.target.value)}
                         />
                       </div>
                       <div className="space-y-2 md:col-span-2">
-                        <label className="block text-sm font-medium text-on-surface" htmlFor="special-notes">Ghi chú đặc biệt</label>
-                        <textarea 
-                          className="w-full px-4 py-3 bg-surface border border-outline-variant rounded-lg focus:ring-1 focus:ring-primary focus:border-primary font-body-md min-h-[120px] outline-none transition-all" 
-                          id="special-notes" 
-                          placeholder="Ví dụ: Dị ứng hải sản, bàn gần cửa sổ..."
+                        <label className="block text-sm font-medium text-on-surface" htmlFor="special-notes">Special Notes</label>
+                        <textarea
+                          className="w-full px-4 py-3 bg-surface border border-outline-variant rounded-lg focus:ring-1 focus:ring-primary focus:border-primary font-body-md min-h-[120px] outline-none transition-all"
+                          id="special-notes"
+                          placeholder="e.g. Seafood allergy, window seat preferred..."
                           value={specialNotes}
                           onChange={(e) => setSpecialNotes(e.target.value)}
                         ></textarea>
@@ -642,15 +642,14 @@ const ReservationPage: React.FC<ReservationPageProps> = ({ onNeedLogin }) => {
                     </div>
                   </section>
 
-                  {/* Phần 2: Phương thức thanh toán */}
                   <div className="py-8 border-t border-outline-variant/30">
                     <div className="flex flex-col items-center text-center space-y-4">
                       <div className="w-16 h-16 rounded-full bg-primary-container/20 flex items-center justify-center text-primary">
                         <span className="material-symbols-outlined text-3xl">restaurant</span>
                       </div>
-                      <h2 className="font-headline-md font-bold">Thanh toán tại nhà hàng</h2>
+                      <h2 className="font-headline-md font-bold">Pay at Restaurant</h2>
                       <p className="font-body-lg text-on-surface-variant max-w-md">
-                        Quý khách vui lòng thanh toán trực tiếp tại nhà hàng khi đến trải nghiệm.
+                        Payment will be settled directly at the restaurant upon your arrival.
                       </p>
                     </div>
                   </div>
@@ -717,8 +716,8 @@ const ReservationPage: React.FC<ReservationPageProps> = ({ onNeedLogin }) => {
                             <div className="col-span-2">
                               <p className="text-xs text-on-surface-variant">Assigned Table</p>
                               {confirmedTableNumber !== null
-                                ? <p className="font-bold text-on-surface">Bàn {confirmedTableNumber}</p>
-                                : <p className="text-on-surface-variant italic text-xs">Nhân viên sẽ hướng dẫn khi đến</p>
+                                ? <p className="font-bold text-on-surface">Table {confirmedTableNumber}</p>
+                                : <p className="text-on-surface-variant italic text-xs">Staff will assist you upon arrival</p>
                               }
                             </div>
                             {customerName && (
@@ -753,7 +752,7 @@ const ReservationPage: React.FC<ReservationPageProps> = ({ onNeedLogin }) => {
                             
                             <li className="flex justify-between items-center pt-4 border-t border-dashed border-outline-variant">
                               <span className="font-bold text-primary">Pre-order Total</span>
-                              <span className="font-bold text-primary text-base">${preOrderSubtotal.toFixed(2)}</span>
+                              <span className="font-bold text-primary text-base">{preOrderSubtotal.toLocaleString('vi-VN')} ₫</span>
                             </li>
                           </ul>
                         </div>
@@ -839,7 +838,7 @@ const ReservationPage: React.FC<ReservationPageProps> = ({ onNeedLogin }) => {
                                 <span className="text-on-surface">
                                   {dish.name} <span className="text-xs font-bold text-primary ml-1">x{qty}</span>
                                 </span>
-                                <span className="font-bold">${(dish.price * qty).toFixed(2)}</span>
+                                <span className="font-bold">{(dish.price * qty).toLocaleString('vi-VN')} ₫</span>
                               </div>
                             );
                           })}
@@ -851,14 +850,14 @@ const ReservationPage: React.FC<ReservationPageProps> = ({ onNeedLogin }) => {
                   <div className="pt-6 border-t border-outline-variant">
                     <div className="flex justify-between items-center">
                       <span className="font-headline-md text-headline-md text-primary">Pre-order Total</span>
-                      <span className="font-headline-md text-headline-md text-primary">${preOrderSubtotal.toFixed(2)}</span>
+                      <span className="font-headline-md text-headline-md text-primary">{preOrderSubtotal.toLocaleString('vi-VN')} ₫</span>
                     </div>
                   </div>
 
                   <div className="bg-primary-container/10 p-4 rounded-lg flex items-start gap-3">
                     <span className="material-symbols-outlined text-primary text-xl">info</span>
                     <p className="text-label-sm text-on-primary-container">
-                      Thanh toán trực tiếp tại nhà hàng. Tổng trên chỉ ước tính cho phần pre-order.
+                      Payment settled at the restaurant. Total shown is pre-order estimate only.
                     </p>
                   </div>
                 </div>

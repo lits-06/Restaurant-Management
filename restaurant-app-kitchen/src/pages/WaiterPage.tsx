@@ -39,7 +39,7 @@ export default function WaiterPage({ onLogout }: Props) {
         setOrders((prev) => prev.map((o) => (o.order_id === orderId ? res.order! : o)))
       }
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Lỗi cập nhật')
+      alert(err instanceof Error ? err.message : 'Update failed')
     }
   }
 
@@ -56,7 +56,7 @@ export default function WaiterPage({ onLogout }: Props) {
         <div className="flex items-center gap-3">
           <span className="text-2xl">🛎</span>
           <div>
-            <h1 className="font-bold text-lg leading-tight">Waiter — Phục vụ</h1>
+            <h1 className="font-bold text-lg leading-tight">Service</h1>
             <p className="text-xs text-gray-400">{user?.full_name}</p>
           </div>
         </div>
@@ -66,11 +66,11 @@ export default function WaiterPage({ onLogout }: Props) {
           </span>
           {readyItems.length > 0 && (
             <span className="bg-green-700 text-white text-xs font-bold px-2 py-1 rounded-full animate-pulse">
-              {readyItems.length} sẵn sàng
+              {readyItems.length} ready
             </span>
           )}
           <button onClick={onLogout} className="text-sm text-gray-400 hover:text-white transition-colors">
-            Đăng xuất
+            Sign Out
           </button>
         </div>
       </header>
@@ -79,15 +79,15 @@ export default function WaiterPage({ onLogout }: Props) {
         {/* Main: READY items */}
         <main className="flex-1 overflow-y-auto p-6">
           <h2 className="text-lg font-semibold text-green-400 mb-4">
-            Món cần mang ra ({readyItems.length})
+            Items to Serve ({readyItems.length})
           </h2>
 
           {loading ? (
-            <p className="text-gray-400 text-center py-12">Đang tải...</p>
+            <p className="text-gray-400 text-center py-12">Loading...</p>
           ) : readyItems.length === 0 ? (
             <div className="text-center py-16 text-gray-500">
               <div className="text-5xl mb-4">☕</div>
-              <p className="text-lg">Chưa có món nào sẵn sàng</p>
+              <p className="text-lg">No items ready yet</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -102,9 +102,9 @@ export default function WaiterPage({ onLogout }: Props) {
                       {item.name} <span className="text-gray-400 font-normal">×{item.quantity}</span>
                     </p>
                     <p className="text-sm text-gray-400 mt-0.5">
-                      {order.name} · {order.party_size} người
+                      {order.name} · {order.party_size} guests
                       <span className="text-orange-400 ml-2 font-mono text-xs">
-                        Bàn: {order.table_id.slice(0, 8)}…
+                        Table: {order.table_id.slice(0, 8)}…
                       </span>
                     </p>
                   </div>
@@ -112,7 +112,7 @@ export default function WaiterPage({ onLogout }: Props) {
                     onClick={() => markServed(order.order_id, item.item_id)}
                     className="bg-green-600 hover:bg-green-500 text-white font-semibold px-4 py-2 rounded-lg transition-colors shrink-0"
                   >
-                    Đã mang ✓
+                    Served ✓
                   </button>
                 </div>
               ))}
@@ -122,7 +122,7 @@ export default function WaiterPage({ onLogout }: Props) {
           {/* All orders summary */}
           <div className="mt-8">
             <h2 className="text-sm font-semibold text-gray-400 mb-3 uppercase tracking-wide">
-              Tất cả order đang phục vụ ({orders.length})
+              All Active Orders ({orders.length})
             </h2>
             <div className="space-y-2">
               {orders.map((order) => {
@@ -133,11 +133,11 @@ export default function WaiterPage({ onLogout }: Props) {
                   <div key={order.order_id} className="bg-gray-800 rounded-lg px-4 py-2.5 flex items-center justify-between">
                     <div>
                       <span className="font-medium text-white text-sm">{order.name}</span>
-                      <span className="text-gray-500 text-xs ml-2">{order.party_size} người</span>
+                      <span className="text-gray-500 text-xs ml-2">{order.party_size} guests</span>
                     </div>
                     <div className="flex items-center gap-2 text-xs">
-                      {r > 0 && <span className="bg-green-800 text-green-300 px-2 py-0.5 rounded">{r} sẵn sàng</span>}
-                      <span className="text-gray-500">{s}/{total} đã mang</span>
+                      {r > 0 && <span className="bg-green-800 text-green-300 px-2 py-0.5 rounded">{r} ready</span>}
+                      <span className="text-gray-500">{s}/{total} served</span>
                     </div>
                   </div>
                 )
@@ -149,16 +149,16 @@ export default function WaiterPage({ onLogout }: Props) {
         {/* Sidebar: notification feed */}
         <aside className="w-72 bg-gray-800 border-l border-gray-700 flex flex-col shrink-0">
           <div className="px-4 py-3 border-b border-gray-700 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-300">Thông báo</h3>
+            <h3 className="text-sm font-semibold text-gray-300">Notifications</h3>
             {notifications.length > 0 && (
               <button onClick={clearNotifications} className="text-xs text-gray-500 hover:text-gray-300">
-                Xóa
+                Clear
               </button>
             )}
           </div>
           <div className="flex-1 overflow-y-auto p-3 space-y-2">
             {notifications.length === 0 ? (
-              <p className="text-gray-500 text-xs text-center py-6">Chưa có thông báo</p>
+              <p className="text-gray-500 text-xs text-center py-6">No notifications</p>
             ) : (
               notifications.map((n) => <NotificationItem key={n.id} notif={n} />)
             )}
@@ -171,7 +171,7 @@ export default function WaiterPage({ onLogout }: Props) {
 
 function NotificationItem({ notif }: { notif: KitchenNotification }) {
   const time = notif.created_at
-    ? new Date(notif.created_at * 1000).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    ? new Date(notif.created_at * 1000).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
     : ''
 
   return (
@@ -179,7 +179,7 @@ function NotificationItem({ notif }: { notif: KitchenNotification }) {
       <p className="text-sm text-white font-medium leading-snug">{notif.message || notif.item_name}</p>
       {notif.table_id && (
         <p className="text-xs text-gray-400 mt-0.5">
-          Bàn: <span className="font-mono">{notif.table_id.slice(0, 8)}…</span>
+          Table: <span className="font-mono">{notif.table_id.slice(0, 8)}…</span>
         </p>
       )}
       <p className="text-xs text-gray-500 mt-1">{time}</p>

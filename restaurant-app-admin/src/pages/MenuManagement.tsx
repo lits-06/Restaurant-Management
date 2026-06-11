@@ -42,7 +42,7 @@ const fmtVnd = (n: number) => `${Math.round(n).toLocaleString('vi-VN')}đ`;
 const MenuManagement: React.FC = () => {
   const [dishes, setDishes]         = useState<Dish[]>([]);
   const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
-  const [activeCategory, setActiveCategory] = useState('Tất cả');
+  const [activeCategory, setActiveCategory] = useState('All');
   const [searchQuery, setSearchQuery]       = useState('');
   const [isLoading, setIsLoading]           = useState(true);
   const [error, setError]                   = useState('');
@@ -58,7 +58,7 @@ const MenuManagement: React.FC = () => {
 
   const mapDto = (item: MenuItemDto): Dish => {
     const catId   = item.category_id ?? item.categoryId ?? '';
-    const catName = categories.find(c => c.id === catId)?.name ?? item.category ?? 'Khác';
+    const catName = categories.find(c => c.id === catId)?.name ?? item.category ?? 'Other';
     return {
       id:          getItemId(item),
       name:        item.name ?? '',
@@ -76,7 +76,7 @@ const MenuManagement: React.FC = () => {
   const loadCategories = async () => {
     try {
       const res = await menuApi.listCategories();
-      return (res.categories ?? []).map(cat => ({ id: cat.category_id ?? cat.categoryId ?? '', name: cat.name ?? 'Khác' }));
+      return (res.categories ?? []).map(cat => ({ id: cat.category_id ?? cat.categoryId ?? '', name: cat.name ?? 'Other' }));
     } catch {
       return [];
     }
@@ -89,7 +89,7 @@ const MenuManagement: React.FC = () => {
       const res = await menuApi.listItems({ page: 1, page_size: 100 });
       const mapped = (res.items ?? []).map(item => {
         const catId   = item.category_id ?? item.categoryId ?? '';
-        const catName = cats.find(c => c.id === catId)?.name ?? item.category ?? 'Khác';
+        const catName = cats.find(c => c.id === catId)?.name ?? item.category ?? 'Other';
         return {
           id:          getItemId(item),
           name:        item.name ?? '',
@@ -103,7 +103,7 @@ const MenuManagement: React.FC = () => {
       }).filter(d => d.id);
       setDishes(mapped);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không thể tải thực đơn.');
+      setError(err instanceof Error ? err.message : 'Failed to load menu.');
     } finally {
       setIsLoading(false);
     }
@@ -120,7 +120,7 @@ const MenuManagement: React.FC = () => {
 
   const filteredDishes = useMemo(() =>
     dishes.filter(d => {
-      const matchCat  = activeCategory === 'Tất cả' || d.category === activeCategory;
+      const matchCat  = activeCategory === 'All' || d.category === activeCategory;
       const matchName = d.name.toLowerCase().includes(searchQuery.toLowerCase());
       return matchCat && matchName;
     }),
@@ -141,12 +141,12 @@ const MenuManagement: React.FC = () => {
   };
 
   const handleDelete = async (dish: Dish) => {
-    if (!window.confirm(`Xóa món "${dish.name}"?`)) return;
+    if (!window.confirm(`Delete "${dish.name}"?`)) return;
     try {
       await menuApi.deleteItem(dish.id);
       setDishes(prev => prev.filter(d => d.id !== dish.id));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không thể xóa món ăn.');
+      setError(err instanceof Error ? err.message : 'Failed to delete item.');
     }
   };
 
@@ -180,7 +180,7 @@ const MenuManagement: React.FC = () => {
       }
       setIsModalOpen(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không thể lưu món ăn.');
+      setError(err instanceof Error ? err.message : 'Failed to save item.');
     } finally {
       setIsSaving(false);
     }
@@ -188,7 +188,7 @@ const MenuManagement: React.FC = () => {
 
   // ── render ────────────────────────────────────────────────────────────────────
 
-  const categoryTabs = ['Tất cả', ...categories.map(c => c.name)];
+  const categoryTabs = ['All', ...categories.map(c => c.name)];
 
   return (
     <div className="flex flex-col gap-6 animate-fadeIn">
@@ -196,16 +196,16 @@ const MenuManagement: React.FC = () => {
       <div className="flex justify-between items-end border-b border-outline-variant/20 pb-6">
         <div>
           <nav className="flex gap-2 text-on-surface-variant text-[10px] mb-2 uppercase tracking-widest">
-            <span>Admin</span><span>/</span><span className="text-primary font-bold">Thực đơn</span>
+            <span>Admin</span><span>/</span><span className="text-primary font-bold">Menu</span>
           </nav>
-          <h2 className="font-serif text-5xl font-bold text-on-surface">Quản lý Thực đơn</h2>
+          <h2 className="font-serif text-5xl font-bold text-on-surface">Menu Management</h2>
         </div>
         <button
           onClick={() => openModal('add')}
           className="bg-[#735c00] text-white text-xs font-semibold px-6 py-3 rounded-lg shadow-sm hover:shadow-md transition-all active:scale-95 flex items-center gap-2"
         >
           <span className="material-symbols-outlined text-[18px]">add</span>
-          Thêm món mới
+          Add Item
         </button>
       </div>
 
@@ -229,7 +229,7 @@ const MenuManagement: React.FC = () => {
           <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px]">search</span>
           <input
             className="pl-10 pr-4 py-2 bg-[#f3f4f5] border border-outline-variant rounded-full text-sm w-64 focus:outline-none focus:border-[#735c00] transition-all"
-            placeholder="Tìm kiếm món ăn..."
+            placeholder="Search dishes..."
             type="text"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
@@ -238,7 +238,7 @@ const MenuManagement: React.FC = () => {
       </div>
 
       {error   && <p className="text-sm text-red-600">{error}</p>}
-      {isLoading && <p className="text-sm text-on-surface-variant">Đang tải thực đơn...</p>}
+      {isLoading && <p className="text-sm text-on-surface-variant">Loading menu...</p>}
 
       {/* Dish grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
@@ -285,7 +285,7 @@ const MenuManagement: React.FC = () => {
           <div className="w-16 h-16 rounded-full bg-[#e1e3e4] flex items-center justify-center group-hover:bg-[#735c00] group-hover:text-white transition-all mb-4 text-on-surface-variant">
             <span className="material-symbols-outlined text-[32px]">add_circle</span>
           </div>
-          <p className="text-xs font-semibold text-on-surface-variant group-hover:text-[#735c00] transition-colors">Thêm món ăn mới</p>
+          <p className="text-xs font-semibold text-on-surface-variant group-hover:text-[#735c00] transition-colors">Add new dish</p>
         </div>
       </div>
 
@@ -295,7 +295,7 @@ const MenuManagement: React.FC = () => {
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden">
             <div className="px-8 py-6 border-b border-outline-variant/20 flex justify-between items-center">
               <h3 className="font-serif text-xl font-bold text-on-surface">
-                {modalMode === 'add' ? 'Thêm món mới' : 'Cập nhật món ăn'}
+                {modalMode === 'add' ? 'Add New Item' : 'Update Item'}
               </h3>
               <button className="text-on-surface-variant hover:text-[#735c00] transition-colors" onClick={() => setIsModalOpen(false)}>
                 <span className="material-symbols-outlined">close</span>
@@ -307,10 +307,10 @@ const MenuManagement: React.FC = () => {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider block">Tên món ăn</label>
+                  <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider block">Dish Name</label>
                   <input
                     className="w-full px-4 py-3 bg-[#f3f4f5] border border-outline-variant rounded-lg focus:ring-1 focus:ring-[#735c00] focus:border-[#735c00] outline-none text-on-surface"
-                    placeholder="Ví dụ: Bò Wagyu A5..."
+                    placeholder="e.g. Wagyu Beef A5..."
                     type="text"
                     value={form.name}
                     onChange={e => setForm({ ...form, name: e.target.value })}
@@ -318,7 +318,7 @@ const MenuManagement: React.FC = () => {
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider block">Giá (VNĐ)</label>
+                  <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider block">Price (VNĐ)</label>
                   <input
                     className="w-full px-4 py-3 bg-[#f3f4f5] border border-outline-variant rounded-lg focus:ring-1 focus:ring-[#735c00] focus:border-[#735c00] outline-none text-on-surface"
                     placeholder="0"
@@ -332,7 +332,7 @@ const MenuManagement: React.FC = () => {
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider block">Danh mục</label>
+                <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider block">Category</label>
                 {categories.length > 0 ? (
                   <select
                     className="w-full px-4 py-3 bg-[#f3f4f5] border border-outline-variant rounded-lg focus:ring-1 focus:ring-[#735c00] focus:border-[#735c00] outline-none text-on-surface"
@@ -340,7 +340,7 @@ const MenuManagement: React.FC = () => {
                     onChange={e => setForm({ ...form, categoryId: e.target.value })}
                     required
                   >
-                    <option value="">-- Chọn danh mục --</option>
+                    <option value="">-- Select category --</option>
                     {categories.map(cat => (
                       <option key={cat.id} value={cat.id}>{cat.name}</option>
                     ))}
@@ -348,7 +348,7 @@ const MenuManagement: React.FC = () => {
                 ) : (
                   <input
                     className="w-full px-4 py-3 bg-[#f3f4f5] border border-outline-variant rounded-lg focus:ring-1 focus:ring-[#735c00] focus:border-[#735c00] outline-none text-on-surface"
-                    placeholder="Ví dụ: Món chính"
+                    placeholder="e.g. Main Course"
                     type="text"
                     value={form.categoryId}
                     onChange={e => setForm({ ...form, categoryId: e.target.value })}
@@ -357,10 +357,10 @@ const MenuManagement: React.FC = () => {
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider block">Mô tả</label>
+                <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider block">Description</label>
                 <textarea
                   className="w-full px-4 py-3 bg-[#f3f4f5] border border-outline-variant rounded-lg focus:ring-1 focus:ring-[#735c00] focus:border-[#735c00] outline-none text-on-surface resize-none"
-                  placeholder="Thành phần, cách chế biến..."
+                  placeholder="Ingredients, preparation..."
                   rows={3}
                   value={form.description}
                   onChange={e => setForm({ ...form, description: e.target.value })}
@@ -368,7 +368,7 @@ const MenuManagement: React.FC = () => {
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider block">URL hình ảnh</label>
+                <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider block">Image URL</label>
                 <input
                   className="w-full px-4 py-3 bg-[#f3f4f5] border border-outline-variant rounded-lg focus:ring-1 focus:ring-[#735c00] focus:border-[#735c00] outline-none text-on-surface"
                   placeholder="/images/mon-an.jpg"
@@ -380,14 +380,14 @@ const MenuManagement: React.FC = () => {
 
               <div className="flex justify-end items-center gap-4 pt-2">
                 <button type="button" className="text-xs font-semibold text-on-surface-variant hover:text-[#735c00] transition-colors px-4 py-2" onClick={() => setIsModalOpen(false)}>
-                  Hủy bỏ
+                  Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSaving}
                   className="px-10 py-3 bg-[#735c00] text-white text-xs font-bold rounded-lg shadow-md hover:bg-[#735c00]/90 transition-all active:scale-95 uppercase tracking-widest disabled:opacity-60"
                 >
-                  {isSaving ? 'Đang lưu...' : modalMode === 'add' ? 'Tạo món mới' : 'Lưu thay đổi'}
+                  {isSaving ? 'Saving...' : modalMode === 'add' ? 'Create Item' : 'Save Changes'}
                 </button>
               </div>
             </form>

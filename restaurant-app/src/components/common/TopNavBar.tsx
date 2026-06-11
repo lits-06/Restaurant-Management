@@ -55,24 +55,16 @@ export default function TopNavBar({ currentPage, navigateTo, onLogout }: TopNavB
                 className="flex items-center gap-1.5 text-sm font-semibold text-on-surface-variant border border-outline-variant px-4 py-2 rounded-lg hover:bg-surface-container-low transition-all"
               >
                 <span className="material-symbols-outlined text-base">logout</span>
-                Đăng xuất
+                Sign Out
               </button>
             </>
           ) : (
-            <>
-              <button
-                onClick={() => navigateTo('login')}
-                className="text-sm font-semibold text-primary border border-primary/30 px-4 py-2 rounded-lg hover:bg-primary/5 transition-all"
-              >
-                Đăng nhập
-              </button>
-              <button
-                onClick={() => navigateTo('reservation')}
-                className="bg-primary-container text-on-primary-container px-6 py-2 rounded-lg font-label-sm hover:opacity-90 transition-all cursor-pointer active:scale-95"
-              >
-                Book Now
-              </button>
-            </>
+            <button
+              onClick={() => navigateTo('login')}
+              className="text-sm font-semibold text-primary border border-primary/30 px-4 py-2 rounded-lg hover:bg-primary/5 transition-all"
+            >
+              Sign In
+            </button>
           )}
         </div>
       </nav>

@@ -37,13 +37,13 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
         try {
             const res = await authApi.login(email, password);
             if (!res.user_id || !res.access_token || !res.refresh_token) {
-                throw new Error('Phản hồi máy chủ không hợp lệ.');
+                throw new Error('Invalid server response.');
             }
             const profileRes = await usersApi.getOne(res.user_id);
             const u = profileRes.user;
             const roles = u?.roles ?? [];
             if (!hasAdminAccess(roles)) {
-                throw new Error('Tài khoản của bạn không có quyền truy cập admin.');
+                throw new Error('Your account does not have admin access.');
             }
             setAuth(
                 {
@@ -58,7 +58,7 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
             );
             onSuccess();
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Đăng nhập thất bại.');
+            setError(err instanceof Error ? err.message : 'Sign in failed.');
         } finally {
             setLoading(false);
         }

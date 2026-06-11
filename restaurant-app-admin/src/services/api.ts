@@ -14,20 +14,62 @@ const buildPath = (path: string, query?: Record<string, QueryValue>) => {
   return url.toString();
 };
 
+// Deduplicates concurrent refresh calls into one in-flight promise
+let refreshing: Promise<string | null> | null = null;
+
+const tryRefreshToken = (): Promise<string | null> => {
+  if (refreshing) return refreshing;
+  const { refreshToken, user, setAuth, clearAuth } = useAdminAuthStore.getState();
+  if (!refreshToken || !user) return Promise.resolve(null);
+
+  refreshing = fetch(`${API_BASE_URL}/auth/refresh`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refresh_token: refreshToken }),
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (data.access_token) {
+        setAuth(user, data.access_token, refreshToken);
+        return data.access_token as string;
+      }
+      clearAuth();
+      return null;
+    })
+    .catch(() => { clearAuth(); return null; })
+    .finally(() => { refreshing = null; });
+
+  return refreshing;
+};
+
 const request = async <T>(path: string, init?: RequestInit, query?: Record<string, QueryValue>): Promise<T> => {
   const token = useAdminAuthStore.getState().accessToken;
-  const response = await fetch(buildPath(path, query), {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init?.headers ?? {}),
-    },
-  });
+
+  const makeRequest = (tok: string | null) =>
+    fetch(buildPath(path, query), {
+      ...init,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(tok ? { Authorization: `Bearer ${tok}` } : {}),
+        ...(init?.headers ?? {}),
+      },
+    });
+
+  let response = await makeRequest(token);
+
+  if (response.status === 401) {
+    const newToken = await tryRefreshToken();
+    if (newToken) {
+      response = await makeRequest(newToken);
+    }
+  }
 
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok || data.success === false) {
+    if (response.status === 401) {
+      useAdminAuthStore.getState().clearAuth();
+    }
     throw new Error(data.message || data.error || `Request failed with status ${response.status}`);
   }
 
@@ -133,13 +175,40 @@ export const authApi = {
       '/auth/logout',
       { method: 'POST', body: JSON.stringify({ refresh_token: refreshToken }) }
     ),
+  changePassword: (oldPassword: string, newPassword: string) =>
+    request<{ success?: boolean; message?: string }>(
+      '/auth/change-password',
+      { method: 'POST', body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }) }
+    ),
 };
 
 export const usersApi = {
   getOne: (id: string) =>
     request<{ user?: UserDto; success?: boolean; message?: string }>(`/users/${id}`),
-  listAll: () =>
-    request<{ users?: UserDto[]; total?: number }>('/users', undefined, { page_size: 200 }),
+  listAll: (query?: { page?: number; page_size?: number; keyword?: string }) =>
+    request<{ users?: UserDto[]; total?: number }>('/users', undefined, { page_size: 200, ...query }),
+  create: (payload: { email: string; password: string; username: string; full_name: string; phone: string; roles?: string[] }) =>
+    request<{ user?: UserDto; success?: boolean; message?: string }>(
+      '/users',
+      { method: 'POST', body: JSON.stringify(payload) }
+    ),
+  update: (id: string, payload: { email?: string; username?: string; full_name?: string; phone?: string; status?: string }) =>
+    request<{ user?: UserDto; success?: boolean; message?: string }>(
+      `/users/${id}`,
+      { method: 'PUT', body: JSON.stringify(payload) }
+    ),
+  delete: (id: string) =>
+    request<{ success?: boolean }>(`/users/${id}`, { method: 'DELETE' }),
+  assignRole: (id: string, roles: string[]) =>
+    request<{ success?: boolean; message?: string }>(
+      `/users/${id}/roles`,
+      { method: 'PATCH', body: JSON.stringify({ roles }) }
+    ),
+  changePassword: (id: string, oldPassword: string, newPassword: string) =>
+    request<{ success?: boolean; message?: string }>(
+      `/users/${id}/password`,
+      { method: 'PATCH', body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }) }
+    ),
 };
 
 export const menuApi = {
@@ -153,11 +222,25 @@ export const menuApi = {
     request<{ success?: boolean }>(`/menu/items/${itemId}`, { method: 'DELETE' }),
   listCategories: () =>
     request<{ categories?: CategoryDto[]; total?: number }>('/menu/categories', undefined, { page_size: 100 }),
+  createCategory: (payload: { name: string; description?: string; display_order?: number }) =>
+    request<{ category?: CategoryDto }>('/menu/categories', { method: 'POST', body: JSON.stringify(payload) }),
+  updateCategory: (id: string, payload: { name: string; description?: string; display_order?: number }) =>
+    request<{ category?: CategoryDto }>(`/menu/categories/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  deleteCategory: (id: string) =>
+    request<{ success?: boolean }>(`/menu/categories/${id}`, { method: 'DELETE' }),
 };
 
 export const tablesApi = {
   list: (query?: { page?: number; page_size?: number }) =>
     request<{ tables?: TableDto[]; total?: number }>('/tables', undefined, query),
+  create: (payload: { table_number: number; capacity: number }) =>
+    request<{ table?: TableDto }>('/tables', { method: 'POST', body: JSON.stringify(payload) }),
+  update: (id: string, payload: { table_number?: number; capacity?: number }) =>
+    request<{ table?: TableDto }>(`/tables/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  delete: (id: string) =>
+    request<{ success?: boolean }>(`/tables/${id}`, { method: 'DELETE' }),
+  updateStatus: (id: string, status: string) =>
+    request<{ table?: TableDto }>(`/tables/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
 };
 
 export const ordersApi = {

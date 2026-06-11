@@ -57,6 +57,14 @@ interface DetailState {
   userName: string;
 }
 
+interface EditModalState {
+  shiftId: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  notes: string;
+}
+
 // ── component ─────────────────────────────────────────────────────────────────
 
 const STAFF_ROLES = ['CHEF', 'WAITER', 'MANAGER', 'ADMIN'];
@@ -81,6 +89,10 @@ const MonthlyScheduler: React.FC = () => {
   // Detail popover
   const [detail, setDetail] = useState<DetailState | null>(null);
 
+  // Edit modal
+  const [editModal, setEditModal] = useState<EditModalState | null>(null);
+  const [editing, setEditing] = useState(false);
+
   const userMap = new Map(users.map((u) => [u.user_id ?? '', u]));
 
   // ── data loading ─────────────────────────────────────────────
@@ -95,7 +107,7 @@ const MonthlyScheduler: React.FC = () => {
       setShifts(shiftsRes.shifts ?? []);
       setUsers((usersRes.users ?? []).filter((u) => u.roles?.some((r) => STAFF_ROLES.includes(r))));
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Tải dữ liệu thất bại');
+      setError(e instanceof Error ? e.message : 'Failed to load data');
     } finally {
       setLoading(false);
     }
@@ -140,7 +152,7 @@ const MonthlyScheduler: React.FC = () => {
       setCreateModal(null);
       loadData();
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Tạo ca thất bại');
+      alert(e instanceof Error ? e.message : 'Failed to create shift');
     } finally {
       setCreating(false);
     }
@@ -148,19 +160,50 @@ const MonthlyScheduler: React.FC = () => {
 
   // ── delete ───────────────────────────────────────────────────
   const deleteShift = async (shiftId: string) => {
-    if (!confirm('Xóa ca làm việc này?')) return;
+    if (!confirm('Delete this shift?')) return;
     try {
       await scheduleApi.delete(shiftId);
       setDetail(null);
       loadData();
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Xóa ca thất bại');
+      alert(e instanceof Error ? e.message : 'Failed to delete shift');
+    }
+  };
+
+  // ── edit ─────────────────────────────────────────────────────
+  const openEditModal = (s: ShiftDto) => {
+    setDetail(null);
+    setEditModal({
+      shiftId: s.shift_id ?? '',
+      date: s.date ?? '',
+      startTime: s.start_time ?? '',
+      endTime: s.end_time ?? '',
+      notes: s.notes ?? '',
+    });
+  };
+
+  const submitEdit = async () => {
+    if (!editModal) return;
+    setEditing(true);
+    try {
+      await scheduleApi.update(editModal.shiftId, {
+        date:       editModal.date,
+        start_time: editModal.startTime,
+        end_time:   editModal.endTime,
+        notes:      editModal.notes,
+      });
+      setEditModal(null);
+      loadData();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Failed to save');
+    } finally {
+      setEditing(false);
     }
   };
 
   // ── render ───────────────────────────────────────────────────
   const cells = calendarGrid(year, month);
-  const monthLabel = new Date(year, month, 1).toLocaleDateString('vi-VN', { month: 'long', year: 'numeric' });
+  const monthLabel = new Date(year, month, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
   const shiftsOnDay = (day: number) => {
     const d = dateStr(year, month, day);
@@ -174,7 +217,7 @@ const MonthlyScheduler: React.FC = () => {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-[#191c1d]">Lịch làm việc</h1>
+          <h1 className="text-2xl font-bold text-[#191c1d]">Staff Schedule</h1>
           <p className="text-sm text-[#6b7280] mt-1 capitalize">{monthLabel}</p>
         </div>
         <div className="flex items-center gap-3">
@@ -183,11 +226,11 @@ const MonthlyScheduler: React.FC = () => {
             onChange={(e) => setRoleFilter(e.target.value)}
             className="text-sm border border-[#d0c5af] rounded-lg px-3 py-2 bg-white text-[#4d4635]"
           >
-            <option value="">Tất cả roles</option>
+            <option value="">All Roles</option>
             {STAFF_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
           </select>
-          <button onClick={prevMonth} className="px-3 py-2 border border-[#d0c5af] rounded-lg text-sm hover:bg-[#e1e3e4]">◀ Tháng trước</button>
-          <button onClick={nextMonth} className="px-3 py-2 border border-[#d0c5af] rounded-lg text-sm hover:bg-[#e1e3e4]">Tháng sau ▶</button>
+          <button onClick={prevMonth} className="px-3 py-2 border border-[#d0c5af] rounded-lg text-sm hover:bg-[#e1e3e4]">◀ Previous</button>
+          <button onClick={nextMonth} className="px-3 py-2 border border-[#d0c5af] rounded-lg text-sm hover:bg-[#e1e3e4]">Next ▶</button>
         </div>
       </div>
 
@@ -197,14 +240,14 @@ const MonthlyScheduler: React.FC = () => {
       <div className="bg-white rounded-2xl border border-[#e5e7eb] overflow-hidden shadow-sm">
         {/* Weekday headers */}
         <div className="grid grid-cols-7 border-b border-[#e5e7eb]">
-          {['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'].map((d) => (
+          {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => (
             <div key={d} className="text-center text-xs font-semibold text-[#6b7280] py-3 bg-[#f9fafb]">{d}</div>
           ))}
         </div>
 
         {/* Cells */}
         {loading ? (
-          <div className="text-center py-16 text-[#6b7280]">Đang tải...</div>
+          <div className="text-center py-16 text-[#6b7280]">Loading...</div>
         ) : (
           <div className="grid grid-cols-7">
             {cells.map((day, i) => (
@@ -221,7 +264,7 @@ const MonthlyScheduler: React.FC = () => {
                       <button
                         onClick={() => openCreateModal(day)}
                         className="w-5 h-5 rounded-full bg-[#e5e7eb] hover:bg-[#d4af37] hover:text-white text-[#6b7280] text-xs flex items-center justify-center transition-colors"
-                        title="Thêm ca"
+                        title="Add shift"
                       >
                         +
                       </button>
@@ -255,10 +298,10 @@ const MonthlyScheduler: React.FC = () => {
       {createModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md">
-            <h2 className="text-lg font-bold mb-4 text-[#191c1d]">Thêm ca làm việc — {createModal.date}</h2>
+            <h2 className="text-lg font-bold mb-4 text-[#191c1d]">Add Shift — {createModal.date}</h2>
             <div className="flex flex-col gap-3">
               <div>
-                <label className="text-xs font-semibold text-[#6b7280] mb-1 block">Nhân viên</label>
+                <label className="text-xs font-semibold text-[#6b7280] mb-1 block">Staff Member</label>
                 <select
                   value={createModal.userID}
                   onChange={(e) => setCreateModal({ ...createModal, userID: e.target.value })}
@@ -271,12 +314,12 @@ const MonthlyScheduler: React.FC = () => {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-semibold text-[#6b7280] mb-1 block">Giờ bắt đầu</label>
+                  <label className="text-xs font-semibold text-[#6b7280] mb-1 block">Start Time</label>
                   <input type="time" value={createModal.startTime} onChange={(e) => setCreateModal({ ...createModal, startTime: e.target.value })}
                     className="w-full border border-[#d0c5af] rounded-lg px-3 py-2 text-sm" />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-[#6b7280] mb-1 block">Giờ kết thúc</label>
+                  <label className="text-xs font-semibold text-[#6b7280] mb-1 block">End Time</label>
                   <input type="time" value={createModal.endTime} onChange={(e) => setCreateModal({ ...createModal, endTime: e.target.value })}
                     className="w-full border border-[#d0c5af] rounded-lg px-3 py-2 text-sm" />
                 </div>
@@ -289,19 +332,19 @@ const MonthlyScheduler: React.FC = () => {
                 </select>
               </div>
               <div>
-                <label className="text-xs font-semibold text-[#6b7280] mb-1 block">Ghi chú</label>
+                <label className="text-xs font-semibold text-[#6b7280] mb-1 block">Notes</label>
                 <input type="text" value={createModal.notes} onChange={(e) => setCreateModal({ ...createModal, notes: e.target.value })}
-                  placeholder="Ca sáng, thay thế..." className="w-full border border-[#d0c5af] rounded-lg px-3 py-2 text-sm" />
+                  placeholder="e.g. Morning shift, substitute..." className="w-full border border-[#d0c5af] rounded-lg px-3 py-2 text-sm" />
               </div>
             </div>
             <div className="flex gap-3 mt-5">
               <button onClick={submitCreate} disabled={creating}
                 className="flex-1 bg-[#d4af37] text-white rounded-lg py-2 text-sm font-semibold hover:bg-[#b8962d] disabled:opacity-60">
-                {creating ? 'Đang lưu...' : 'Lưu ca'}
+                {creating ? 'Saving...' : 'Save Shift'}
               </button>
               <button onClick={() => setCreateModal(null)}
                 className="flex-1 border border-[#d0c5af] rounded-lg py-2 text-sm font-semibold hover:bg-[#f3f4f5]">
-                Hủy
+                Cancel
               </button>
             </div>
           </div>
@@ -322,12 +365,84 @@ const MonthlyScheduler: React.FC = () => {
               </span>
             </div>
             {detail.shift.notes && <p className="text-sm text-[#374151] mb-4">{detail.shift.notes}</p>}
-            <button
-              onClick={() => deleteShift(detail.shift.shift_id ?? '')}
-              className="w-full bg-red-50 text-red-600 border border-red-200 rounded-lg py-2 text-sm font-semibold hover:bg-red-100"
-            >
-              Xóa ca
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => openEditModal(detail.shift)}
+                className="flex-1 bg-[#d4af37] text-white border border-[#d4af37] rounded-lg py-2 text-sm font-semibold hover:bg-[#b8962d]"
+              >
+                Edit Shift
+              </button>
+              <button
+                onClick={() => deleteShift(detail.shift.shift_id ?? '')}
+                className="flex-1 bg-red-50 text-red-600 border border-red-200 rounded-lg py-2 text-sm font-semibold hover:bg-red-100"
+              >
+                Delete Shift
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Edit modal */}
+      {editModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md">
+            <h2 className="text-lg font-bold mb-4 text-[#191c1d]">Edit Shift</h2>
+            <div className="flex flex-col gap-3">
+              <div>
+                <label className="text-xs font-semibold text-[#6b7280] mb-1 block">Date</label>
+                <input
+                  type="date"
+                  value={editModal.date}
+                  onChange={(e) => setEditModal({ ...editModal, date: e.target.value })}
+                  className="w-full border border-[#d0c5af] rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-[#6b7280] mb-1 block">Start Time</label>
+                  <input
+                    type="time"
+                    value={editModal.startTime}
+                    onChange={(e) => setEditModal({ ...editModal, startTime: e.target.value })}
+                    className="w-full border border-[#d0c5af] rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-[#6b7280] mb-1 block">End Time</label>
+                  <input
+                    type="time"
+                    value={editModal.endTime}
+                    onChange={(e) => setEditModal({ ...editModal, endTime: e.target.value })}
+                    className="w-full border border-[#d0c5af] rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-[#6b7280] mb-1 block">Notes</label>
+                <input
+                  type="text"
+                  value={editModal.notes}
+                  onChange={(e) => setEditModal({ ...editModal, notes: e.target.value })}
+                  placeholder="e.g. Morning shift..."
+                  className="w-full border border-[#d0c5af] rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+            <div className="flex gap-3 mt-5">
+              <button
+                onClick={submitEdit}
+                disabled={editing}
+                className="flex-1 bg-[#d4af37] text-white rounded-lg py-2 text-sm font-semibold hover:bg-[#b8962d] disabled:opacity-60"
+              >
+                {editing ? 'Saving...' : 'Save Changes'}
+              </button>
+              <button
+                onClick={() => setEditModal(null)}
+                className="flex-1 border border-[#d0c5af] rounded-lg py-2 text-sm font-semibold hover:bg-[#f3f4f5]"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -40,7 +40,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
       const res = await authApi.login(loginEmail, loginPassword);
       const userId = res.user_id;
       if (!userId || !res.access_token || !res.refresh_token) {
-        throw new Error('Phản hồi máy chủ không hợp lệ.');
+        throw new Error('Invalid server response.');
       }
       const profileRes = await usersApi.getOne(userId);
       const u = profileRes.user;
@@ -58,7 +58,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
       );
       onSuccess();
     } catch (err) {
-      setLoginError(err instanceof Error ? err.message : 'Đăng nhập thất bại.');
+      setLoginError(err instanceof Error ? err.message : 'Sign in failed.');
     } finally {
       setLoginLoading(false);
     }
@@ -69,11 +69,11 @@ const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
     setRegError('');
     setRegSuccess('');
     if (regPassword !== regConfirm) {
-      setRegError('Mật khẩu xác nhận không khớp.');
+      setRegError('Passwords do not match.');
       return;
     }
     if (regPassword.length < 8) {
-      setRegError('Mật khẩu phải có ít nhất 8 ký tự.');
+      setRegError('Password must be at least 8 characters.');
       return;
     }
     setRegLoading(true);
@@ -85,11 +85,11 @@ const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
         phone: regPhone,
         password: regPassword,
       });
-      setRegSuccess('Đăng ký thành công! Vui lòng đăng nhập.');
+      setRegSuccess('Registration successful! Please sign in.');
       setLoginEmail(regEmail);
       setTimeout(() => setTab('login'), 1200);
     } catch (err) {
-      setRegError(err instanceof Error ? err.message : 'Đăng ký thất bại.');
+      setRegError(err instanceof Error ? err.message : 'Registration failed.');
     } finally {
       setRegLoading(false);
     }
@@ -108,7 +108,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
               </span>
             </div>
             <h1 className="font-headline-md text-2xl text-on-surface font-bold">LuxeBistro</h1>
-            <p className="text-label-sm text-on-surface-variant mt-1">Tài khoản khách hàng</p>
+            <p className="text-label-sm text-on-surface-variant mt-1">Customer Account</p>
           </div>
 
           {/* Tabs */}
@@ -124,7 +124,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
                     : 'text-on-surface-variant hover:text-on-surface'
                 }`}
               >
-                {t === 'login' ? 'Đăng nhập' : 'Đăng ký'}
+                {t === 'login' ? 'Sign In' : 'Register'}
               </button>
             ))}
           </div>
@@ -153,7 +153,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
 
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-on-surface-variant uppercase tracking-wider" htmlFor="l-password">
-                    Mật khẩu
+                    Password
                   </label>
                   <div className="relative">
                     <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-lg">lock</span>
@@ -191,16 +191,16 @@ const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
                     <span className="material-symbols-outlined animate-spin text-lg">progress_activity</span>
                   ) : (
                     <>
-                      Đăng nhập
+                      Sign In
                       <span className="material-symbols-outlined text-lg">login</span>
                     </>
-                  )}
+)}
                 </button>
 
                 <p className="text-center text-sm text-on-surface-variant">
-                  Chưa có tài khoản?{' '}
+                  Don't have an account?{' '}
                   <button type="button" onClick={() => setTab('register')} className="text-primary font-semibold hover:underline">
-                    Đăng ký ngay
+                    Register now
                   </button>
                 </p>
               </form>
@@ -212,13 +212,13 @@ const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-on-surface-variant uppercase tracking-wider" htmlFor="r-fullname">
-                      Họ và tên
+                      Full Name
                     </label>
                     <input
                       id="r-fullname"
                       type="text"
                       required
-                      placeholder="Nguyễn Văn A"
+                      placeholder="John Doe"
                       value={regFullName}
                       onChange={(e) => setRegFullName(e.target.value)}
                       className="w-full h-11 px-3 bg-surface border border-outline-variant rounded-lg text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all"
@@ -226,13 +226,13 @@ const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-on-surface-variant uppercase tracking-wider" htmlFor="r-username">
-                      Tên đăng nhập
+                      Username
                     </label>
                     <input
                       id="r-username"
                       type="text"
                       required
-                      placeholder="nguyenvana"
+                      placeholder="johndoe"
                       value={regUsername}
                       onChange={(e) => setRegUsername(e.target.value)}
                       className="w-full h-11 px-3 bg-surface border border-outline-variant rounded-lg text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all"
@@ -257,7 +257,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
 
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-on-surface-variant uppercase tracking-wider" htmlFor="r-phone">
-                    Số điện thoại
+                    Phone Number
                   </label>
                   <input
                     id="r-phone"
@@ -272,14 +272,14 @@ const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-on-surface-variant uppercase tracking-wider" htmlFor="r-password">
-                      Mật khẩu
+                      Password
                     </label>
                     <div className="relative">
                       <input
                         id="r-password"
                         type={showRegPassword ? 'text' : 'password'}
                         required
-                        placeholder="≥ 8 ký tự"
+                        placeholder="≥ 8 characters"
                         value={regPassword}
                         onChange={(e) => setRegPassword(e.target.value)}
                         className="w-full h-11 pl-3 pr-9 bg-surface border border-outline-variant rounded-lg text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all"
@@ -297,13 +297,13 @@ const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-on-surface-variant uppercase tracking-wider" htmlFor="r-confirm">
-                      Xác nhận
+                      Confirm
                     </label>
                     <input
                       id="r-confirm"
                       type="password"
                       required
-                      placeholder="Nhập lại"
+                      placeholder="Re-enter"
                       value={regConfirm}
                       onChange={(e) => setRegConfirm(e.target.value)}
                       className="w-full h-11 px-3 bg-surface border border-outline-variant rounded-lg text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all"
@@ -327,16 +327,16 @@ const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
                     <span className="material-symbols-outlined animate-spin text-lg">progress_activity</span>
                   ) : (
                     <>
-                      Tạo tài khoản
+                      Create Account
                       <span className="material-symbols-outlined text-lg">person_add</span>
                     </>
-                  )}
+)}
                 </button>
 
                 <p className="text-center text-sm text-on-surface-variant">
-                  Đã có tài khoản?{' '}
+                  Already have an account?{' '}
                   <button type="button" onClick={() => setTab('login')} className="text-primary font-semibold hover:underline">
-                    Đăng nhập
+                    Sign In
                   </button>
                 </p>
               </form>

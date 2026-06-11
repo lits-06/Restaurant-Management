@@ -65,15 +65,19 @@ function App() {
     }
   };
 
+  const isLoginPage = currentPage === 'login';
+
   return (
     <div className="min-h-screen bg-background text-on-surface flex flex-col">
-      <TopNavBar
-        currentPage={currentPage}
-        navigateTo={navigateTo}
-        onLogout={handleLogout}
-      />
+      {!isLoginPage && (
+        <TopNavBar
+          currentPage={currentPage}
+          navigateTo={navigateTo}
+          onLogout={handleLogout}
+        />
+      )}
       {renderPage()}
-      <Footer />
+      {!isLoginPage && <Footer />}
     </div>
   );
 }

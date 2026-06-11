@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 
 const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const MONTH_FULL  = ['Tháng 1', 'Tháng 2', 'Tháng 3', 'Tháng 4', 'Tháng 5', 'Tháng 6',
-                     'Tháng 7', 'Tháng 8', 'Tháng 9', 'Tháng 10', 'Tháng 11', 'Tháng 12'];
+const MONTH_FULL  = ['January', 'February', 'March', 'April', 'May', 'June',
+                     'July', 'August', 'September', 'October', 'November', 'December'];
 
 interface HeaderProps {
   year: number;
@@ -20,7 +20,7 @@ const Header: React.FC<HeaderProps> = ({ year, month, onChange }) => {
         <nav className="flex items-center gap-2 text-[#4d4635] text-xs font-semibold mb-2">
           <span>Admin</span>
           <span className="material-symbols-outlined text-[14px]">chevron_right</span>
-          <span className="text-[#735c00]">Báo cáo chi tiết</span>
+          <span className="text-[#735c00]">Analytics Report</span>
         </nav>
         <h2 className="font-serif text-5xl font-bold text-[#191c1d]">Analytics Overview</h2>
       </div>
@@ -31,7 +31,7 @@ const Header: React.FC<HeaderProps> = ({ year, month, onChange }) => {
           <button className="flex items-center bg-white border border-[#d0c5af]/50 rounded-lg px-4 py-2.5 shadow-sm hover:border-[#735c00] transition-all gap-3 min-w-[220px] text-left">
             <span className="material-symbols-outlined text-[#735c00] text-[20px]">calendar_month</span>
             <div className="flex flex-col">
-              <span className="text-[10px] uppercase tracking-wider text-[#4d4635] opacity-70">Kỳ báo cáo</span>
+              <span className="text-[10px] uppercase tracking-wider text-[#4d4635] opacity-70">Reporting Period</span>
               <span className="text-base text-[#191c1d] font-semibold">{MONTH_FULL[month]} {year}</span>
             </div>
             <span className="material-symbols-outlined text-[#4d4635] text-[18px] ml-auto group-hover:text-[#735c00] transition-colors">

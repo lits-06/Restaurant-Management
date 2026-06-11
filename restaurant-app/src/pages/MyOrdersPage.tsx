@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState, useMemo } from 'react';
-import { ordersApi, menuApi, type OrderDto, type MenuItemDto } from '../api/gateway.api';
+import { ordersApi, menuApi, tableApi, type OrderDto, type MenuItemDto, type TableDto } from '../api/gateway.api';
 import { useAuthStore } from '../store/authStore';
 
 type OrderTimeValue = string | { seconds?: string | number; nanos?: number } | undefined;
@@ -14,7 +14,7 @@ const parseOrderTime = (time: OrderTimeValue): Date | null => {
 const formatOrderTime = (time: OrderTimeValue): string => {
   const d = parseOrderTime(time);
   if (!d || isNaN(d.getTime())) return '—';
-  return d.toLocaleString('vi-VN', { dateStyle: 'medium', timeStyle: 'short' });
+  return d.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
 };
 
 const canModifyOrder = (order: OrderDto): boolean => {
@@ -32,10 +32,10 @@ const STATUS_STYLE: Record<string, string> = {
 };
 
 const STATUS_LABEL: Record<string, string> = {
-  Pending: 'Chờ xác nhận',
-  Confirmed: 'Đã xác nhận',
-  Completed: 'Hoàn thành',
-  Cancelled: 'Đã hủy',
+  Pending: 'Pending',
+  Confirmed: 'Confirmed',
+  Completed: 'Completed',
+  Cancelled: 'Cancelled',
 };
 
 const getMenuItemId = (item: MenuItemDto) => item.item_id ?? item.itemId ?? '';
@@ -100,7 +100,7 @@ const AddItemsModal: React.FC<AddItemsModalProps> = ({ orderId, onClose, onDone 
       }
       if (lastOrder) onDone(lastOrder);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Thêm món thất bại.');
+      setError(err instanceof Error ? err.message : 'Failed to add items.');
     } finally {
       setSubmitting(false);
     }
@@ -111,7 +111,7 @@ const AddItemsModal: React.FC<AddItemsModalProps> = ({ orderId, onClose, onDone 
       <div className="bg-surface-container-lowest rounded-2xl shadow-2xl border border-outline-variant/30 w-full max-w-lg max-h-[85vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-outline-variant/30">
-          <h3 className="font-bold text-lg text-on-surface">Thêm món vào đơn</h3>
+          <h3 className="font-bold text-lg text-on-surface">Add Items to Order</h3>
           <button type="button" onClick={onClose} className="text-on-surface-variant hover:text-primary transition-colors">
             <span className="material-symbols-outlined">close</span>
           </button>
@@ -120,9 +120,9 @@ const AddItemsModal: React.FC<AddItemsModalProps> = ({ orderId, onClose, onDone 
         {/* Menu list */}
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
           {loading ? (
-            <p className="text-center text-on-surface-variant py-8">Đang tải thực đơn...</p>
+            <p className="text-center text-on-surface-variant py-8">Loading menu...</p>
           ) : menuItems.length === 0 ? (
-            <p className="text-center text-on-surface-variant py-8">Không có món nào.</p>
+            <p className="text-center text-on-surface-variant py-8">No items available.</p>
           ) : (
             menuItems.map((item) => {
               const id = getMenuItemId(item);
@@ -136,7 +136,7 @@ const AddItemsModal: React.FC<AddItemsModalProps> = ({ orderId, onClose, onDone 
                 >
                   <div className="flex-1 min-w-0 mr-4">
                     <p className="font-semibold text-sm text-on-surface truncate">{item.name}</p>
-                    <p className="text-xs text-primary font-bold">${item.price?.toFixed(2)}</p>
+                    <p className="text-xs text-primary font-bold">{item.price?.toLocaleString('vi-VN')} ₫</p>
                   </div>
                   <div className="flex items-center gap-2 rounded-full border border-outline-variant/30 px-2 py-1 bg-surface-container-low">
                     <button
@@ -165,8 +165,8 @@ const AddItemsModal: React.FC<AddItemsModalProps> = ({ orderId, onClose, onDone 
         <div className="px-6 py-4 border-t border-outline-variant/30 space-y-3">
           {total > 0 && (
             <div className="flex justify-between text-sm font-bold text-primary">
-              <span>Cộng thêm</span>
-              <span>+${total.toFixed(2)}</span>
+              <span>Additional</span>
+              <span>+{total.toLocaleString('vi-VN')} ₫</span>
             </div>
           )}
           {error && <p className="text-sm text-error">{error}</p>}
@@ -176,7 +176,7 @@ const AddItemsModal: React.FC<AddItemsModalProps> = ({ orderId, onClose, onDone 
               onClick={onClose}
               className="flex-1 h-11 rounded-lg border border-outline-variant text-on-surface-variant font-semibold text-sm hover:bg-surface-container-low transition-all"
             >
-              Hủy
+              Cancel
             </button>
             <button
               type="button"
@@ -184,7 +184,7 @@ const AddItemsModal: React.FC<AddItemsModalProps> = ({ orderId, onClose, onDone 
               disabled={submitting || Object.keys(cart).length === 0}
               className="flex-1 h-11 rounded-lg bg-primary text-on-primary font-semibold text-sm hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50"
             >
-              {submitting ? 'Đang gửi...' : `Thêm ${Object.keys(cart).length > 0 ? `(${Object.values(cart).reduce((a, b) => a + b, 0)} món)` : ''}`}
+              {submitting ? 'Sending...' : `Add ${Object.keys(cart).length > 0 ? `(${Object.values(cart).reduce((a, b) => a + b, 0)} items)` : ''}`}
             </button>
           </div>
         </div>
@@ -196,11 +196,24 @@ const AddItemsModal: React.FC<AddItemsModalProps> = ({ orderId, onClose, onDone 
 const MyOrdersPage: React.FC = () => {
   const { user } = useAuthStore();
   const [orders, setOrders] = useState<OrderDto[]>([]);
+  const [tableMap, setTableMap] = useState<Map<string, number>>(new Map());
   const [loading, setLoading] = useState(true);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [addItemsOrderId, setAddItemsOrderId] = useState<string | null>(null);
   const [cancelConfirmId, setCancelConfirmId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    tableApi.list({ page_size: 200 })
+      .then((res) => {
+        const map = new Map<string, number>();
+        (res.tables ?? []).forEach((t: TableDto) => {
+          if (t.table_id && t.table_number != null) map.set(t.table_id, t.table_number);
+        });
+        setTableMap(map);
+      })
+      .catch(() => {});
+  }, []);
 
   const loadOrders = useCallback(() => {
     if (!user) { setLoading(false); return; }
@@ -234,7 +247,7 @@ const MyOrdersPage: React.FC = () => {
     } catch (err) {
       setActionError((prev) => ({
         ...prev,
-        [orderId]: err instanceof Error ? err.message : 'Hủy đơn thất bại.',
+        [orderId]: err instanceof Error ? err.message : 'Failed to cancel order.',
       }));
     } finally {
       setCancellingId(null);
@@ -254,7 +267,7 @@ const MyOrdersPage: React.FC = () => {
       <div className="flex-1 flex items-center justify-center py-24">
         <div className="text-center space-y-3">
           <span className="material-symbols-outlined text-5xl text-on-surface-variant">lock</span>
-          <p className="text-on-surface-variant">Vui lòng đăng nhập để xem đơn hàng.</p>
+          <p className="text-on-surface-variant">Please sign in to view your orders.</p>
         </div>
       </div>
     );
@@ -265,9 +278,9 @@ const MyOrdersPage: React.FC = () => {
       <main className="max-w-container-max mx-auto px-margin-mobile md:px-margin-desktop py-12">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="font-headline-xl text-headline-xl text-on-surface mb-1">Đơn đặt bàn của tôi</h1>
+          <h1 className="font-headline-xl text-headline-xl text-on-surface mb-1">My Reservations</h1>
           <p className="text-body-md text-on-surface-variant">
-            Xem lại lịch sử đặt bàn, thêm món hoặc hủy đơn trước giờ ăn.
+            View your booking history, add items, or cancel before your dining time.
           </p>
         </div>
 
@@ -280,8 +293,8 @@ const MyOrdersPage: React.FC = () => {
             <div className="w-20 h-20 bg-primary-container/20 rounded-full flex items-center justify-center mx-auto">
               <span className="material-symbols-outlined text-4xl text-primary">receipt_long</span>
             </div>
-            <h3 className="font-bold text-lg text-on-surface">Chưa có đơn nào</h3>
-            <p className="text-on-surface-variant text-sm">Đặt bàn để bắt đầu trải nghiệm tại LuxeBistro.</p>
+            <h3 className="font-bold text-lg text-on-surface">No reservations yet</h3>
+            <p className="text-on-surface-variant text-sm">Make a reservation to begin your LuxeBistro experience.</p>
           </div>
         ) : (
           <div className="space-y-4">
@@ -316,7 +329,7 @@ const MyOrdersPage: React.FC = () => {
                     <div className="text-right space-y-0.5">
                       <p className="text-xs font-medium text-on-surface">{formatOrderTime(order.time)}</p>
                       {order.end_time && (
-                        <p className="text-xs text-on-surface-variant">đến {formatOrderTime(order.end_time)}</p>
+                        <p className="text-xs text-on-surface-variant">to {formatOrderTime(order.end_time)}</p>
                       )}
                     </div>
                   </div>
@@ -328,13 +341,17 @@ const MyOrdersPage: React.FC = () => {
                       {order.party_size && (
                         <div className="flex items-center gap-2 text-on-surface-variant">
                           <span className="material-symbols-outlined text-base">group</span>
-                          <span>{order.party_size} khách</span>
+                          <span>{order.party_size} {order.party_size === 1 ? 'guest' : 'guests'}</span>
                         </div>
                       )}
                       {order.table_id && (
                         <div className="flex items-center gap-2 text-on-surface-variant">
                           <span className="material-symbols-outlined text-base">table_restaurant</span>
-                          <span>Bàn {order.table_id.slice(-4).toUpperCase()}</span>
+                          <span>
+                            {tableMap.has(order.table_id)
+                              ? `Table ${tableMap.get(order.table_id)}`
+                              : `Table ${order.table_id.slice(-4).toUpperCase()}`}
+                          </span>
                         </div>
                       )}
                       {order.notes && (
@@ -358,13 +375,13 @@ const MyOrdersPage: React.FC = () => {
                           ))}
                           {(order.total_price ?? 0) > 0 && (
                             <div className="flex justify-between text-sm font-bold text-primary border-t border-dashed border-outline-variant pt-2 mt-2">
-                              <span>Tổng</span>
-                              <span>${order.total_price}</span>
+                              <span>Total</span>
+                              <span>{Number(order.total_price).toLocaleString('vi-VN')} ₫</span>
                             </div>
                           )}
                         </div>
                       ) : (
-                        <p className="text-sm text-on-surface-variant italic">Chưa có món pre-order</p>
+                        <p className="text-sm text-on-surface-variant italic">No pre-order items</p>
                       )}
                     </div>
                   </div>
@@ -380,7 +397,7 @@ const MyOrdersPage: React.FC = () => {
                             className="flex items-center gap-1.5 text-sm font-semibold text-primary hover:bg-primary/10 px-3 py-1.5 rounded-lg transition-all"
                           >
                             <span className="material-symbols-outlined text-base">add_circle</span>
-                            Thêm món
+                            Add Items
                           </button>
 
                           {cancelConfirmId !== order.order_id ? (
@@ -390,25 +407,25 @@ const MyOrdersPage: React.FC = () => {
                               className="flex items-center gap-1.5 text-sm font-semibold text-error hover:bg-error/10 px-3 py-1.5 rounded-lg transition-all"
                             >
                               <span className="material-symbols-outlined text-base">cancel</span>
-                              Hủy đơn
+                              Cancel Order
                             </button>
                           ) : (
                             <div className="flex items-center gap-2">
-                              <span className="text-sm text-on-surface-variant">Xác nhận hủy?</span>
+                              <span className="text-sm text-on-surface-variant">Confirm cancellation?</span>
                               <button
                                 type="button"
                                 onClick={() => handleCancel(order.order_id ?? '')}
                                 disabled={isCancel}
                                 className="text-sm font-bold text-white bg-error px-3 py-1.5 rounded-lg hover:opacity-90 disabled:opacity-60 transition-all"
                               >
-                                {isCancel ? '...' : 'Xác nhận'}
+                                {isCancel ? '...' : 'Confirm'}
                               </button>
                               <button
                                 type="button"
                                 onClick={() => setCancelConfirmId(null)}
                                 className="text-sm text-on-surface-variant hover:text-on-surface px-2 py-1.5 transition-all"
                               >
-                                Không
+                                No
                               </button>
                             </div>
                           )}

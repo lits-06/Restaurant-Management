@@ -60,7 +60,7 @@ const ITEM_STATUS_CHIP: Record<string, string> = {
   SERVED:  'bg-blue-100 text-blue-700',
 };
 const ITEM_STATUS_LABEL: Record<string, string> = {
-  PENDING: 'Chờ', COOKING: 'Đang nấu', READY: 'Xong', SERVED: 'Đã mang',
+  PENDING: 'Pending', COOKING: 'Cooking', READY: 'Done', SERVED: 'Served',
 };
 
 const mapOrderToReservation = (o: OrderDto): Reservation => {
@@ -72,7 +72,7 @@ const mapOrderToReservation = (o: OrderDto): Reservation => {
     id:        getOrderId(o),
     tableId:   o.table_id ?? '',
     userId:    o.user_id ?? '',
-    name:      o.name ?? 'Khách vãng lai',
+    name:      o.name ?? 'Walk-in',
     phone:     o.phone ?? '',
     notes:     o.notes ?? '',
     date:      fmtDate(timeDate),
@@ -82,7 +82,7 @@ const mapOrderToReservation = (o: OrderDto): Reservation => {
     status:    (o.status as Reservation['status']) || 'Pending',
     items:     (o.items ?? []).map(i => ({
       id:         getOrderItemId(i),
-      name:       i.name ?? 'Món ăn',
+      name:       i.name ?? 'Item',
       price:      i.price ?? 0,
       quantity:   i.quantity ?? 1,
       itemStatus: (i.item_status ?? 'PENDING').toUpperCase(),
@@ -122,7 +122,7 @@ const OrdersManagement: React.FC = () => {
       const res = await ordersApi.list({ page: 1, page_size: 100 });
       setReservations((res.orders ?? []).map(mapOrderToReservation).filter(r => r.id));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không thể tải đơn đặt bàn.');
+      setError(err instanceof Error ? err.message : 'Failed to load orders.');
     } finally {
       setLoading(false);
     }
@@ -153,7 +153,7 @@ const OrdersManagement: React.FC = () => {
   const tableLabel = (tableId: string) => {
     if (!tableId) return '—';
     const t = tables.find(t => t.table_id === tableId);
-    return t?.table_number != null ? `Bàn ${t.table_number}` : shortId(tableId);
+    return t?.table_number != null ? `Table ${t.table_number}` : shortId(tableId);
   };
 
   // ── status update ─────────────────────────────────────────────────────────────
@@ -165,7 +165,7 @@ const OrdersManagement: React.FC = () => {
       setReservations(prev => prev.map(r => r.id === res.id ? updated : r));
       if (drawerRes?.id === res.id) setDrawerRes(updated);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không thể cập nhật trạng thái.');
+      setError(err instanceof Error ? err.message : 'Failed to update status.');
     } finally {
       setStatusBusy(null);
     }
@@ -189,7 +189,7 @@ const OrdersManagement: React.FC = () => {
       setReservations(prev => prev.map(r => r.id === editModal.id ? updated : r));
       setEditModal(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không thể lưu.');
+      setError(err instanceof Error ? err.message : 'Failed to save.');
     }
   };
 
@@ -233,7 +233,7 @@ const OrdersManagement: React.FC = () => {
       setReservations(prev => prev.map(r => r.id === orderModal.id ? updated : r));
       setOrderModal(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không thể lưu.');
+      setError(err instanceof Error ? err.message : 'Failed to save.');
     }
   };
 
@@ -249,14 +249,14 @@ const OrdersManagement: React.FC = () => {
       <header className="mb-10 flex md:items-end justify-between gap-6">
         <div>
           <nav className="flex gap-2 text-[10px] text-on-surface-variant uppercase tracking-widest mb-2">
-            <span>Admin</span><span>/</span><span className="text-primary font-bold">Đặt bàn</span>
+            <span>Admin</span><span>/</span><span className="text-primary font-bold">Orders</span>
           </nav>
-          <h2 className="font-serif text-5xl font-bold text-on-surface">Quản lý Đặt bàn</h2>
-          <p className="text-on-surface-variant text-sm mt-2">Xem, xác nhận và quản lý đơn đặt bàn của khách.</p>
+          <h2 className="font-serif text-5xl font-bold text-on-surface">Orders Management</h2>
+          <p className="text-on-surface-variant text-sm mt-2">View, confirm and manage customer reservations.</p>
         </div>
         <button onClick={loadOrders} className="flex items-center gap-2 px-4 py-2 bg-white border border-outline-variant/30 rounded-lg text-xs font-semibold hover:bg-[#f3f4f5] transition-all whitespace-nowrap">
           <span className="material-symbols-outlined text-base">refresh</span>
-          Làm mới
+          Refresh
         </button>
       </header>
 
@@ -269,7 +269,7 @@ const OrdersManagement: React.FC = () => {
             value={searchQuery}
             onChange={e => { setSearchQuery(e.target.value); setCurrentPage(1); }}
             className="w-full pl-12 pr-4 py-3 bg-[#f3f4f5] border-none rounded-lg focus:ring-2 focus:ring-[#d4af37] text-sm"
-            placeholder="Tìm theo tên khách..."
+            placeholder="Search by guest name..."
           />
         </div>
         <select
@@ -283,23 +283,23 @@ const OrdersManagement: React.FC = () => {
       </section>
 
       {error  && <p className="mb-4 text-sm text-red-600">{error}</p>}
-      {loading && <p className="mb-4 text-sm text-on-surface-variant">Đang tải...</p>}
+      {loading && <p className="mb-4 text-sm text-on-surface-variant">Loading...</p>}
 
       {/* Table */}
       <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-outline-variant/20">
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-[#f3f4f5] border-b border-outline-variant/30">
-              <th className="px-5 py-4 text-xs font-semibold text-on-surface-variant uppercase">Khách hàng</th>
-              <th className="px-5 py-4 text-xs font-semibold text-on-surface-variant uppercase">Thời gian</th>
-              <th className="px-5 py-4 text-xs font-semibold text-on-surface-variant uppercase">Bàn / Khách</th>
-              <th className="px-5 py-4 text-xs font-semibold text-on-surface-variant uppercase">Trạng thái</th>
-              <th className="px-5 py-4 text-xs font-semibold text-on-surface-variant uppercase text-right">Thao tác</th>
+              <th className="px-5 py-4 text-xs font-semibold text-on-surface-variant uppercase">Guest</th>
+              <th className="px-5 py-4 text-xs font-semibold text-on-surface-variant uppercase">Time</th>
+              <th className="px-5 py-4 text-xs font-semibold text-on-surface-variant uppercase">Table / Guests</th>
+              <th className="px-5 py-4 text-xs font-semibold text-on-surface-variant uppercase">Status</th>
+              <th className="px-5 py-4 text-xs font-semibold text-on-surface-variant uppercase text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-outline-variant/10">
             {pageSlice.length === 0 ? (
-              <tr><td colSpan={5} className="text-center py-12 text-sm text-on-surface-variant italic">Không có đơn nào phù hợp.</td></tr>
+              <tr><td colSpan={5} className="text-center py-12 text-sm text-on-surface-variant italic">No orders found.</td></tr>
             ) : pageSlice.map(res => (
               <tr key={res.id} className="hover:bg-[#f3f4f5]/50 transition-colors">
                 <td className="px-5 py-4">
@@ -321,7 +321,7 @@ const OrdersManagement: React.FC = () => {
                   <p className="text-xs font-semibold text-on-surface">{tableLabel(res.tableId)}</p>
                   <div className="flex items-center gap-1 text-on-surface-variant mt-0.5">
                     <span className="material-symbols-outlined text-sm">groups</span>
-                    <span className="text-xs">{res.partySize} khách</span>
+                    <span className="text-xs">{res.partySize} guests</span>
                   </div>
                 </td>
                 <td className="px-5 py-4">
@@ -330,13 +330,13 @@ const OrdersManagement: React.FC = () => {
                   </span>
                 </td>
                 <td className="px-5 py-4 text-right whitespace-nowrap">
-                  <button onClick={() => setEditModal({ ...res })} className="p-2 text-on-surface-variant hover:text-[#735c00]" title="Sửa thông tin đặt chỗ">
+                  <button onClick={() => setEditModal({ ...res })} className="p-2 text-on-surface-variant hover:text-[#735c00]" title="Edit booking">
                     <span className="material-symbols-outlined text-xl">edit_note</span>
                   </button>
-                  <button onClick={() => { setOrderModal({ ...res }); setAddSearch(''); }} className="p-2 text-on-surface-variant hover:text-[#735c00]" title="Sửa món ăn">
+                  <button onClick={() => { setOrderModal({ ...res }); setAddSearch(''); }} className="p-2 text-on-surface-variant hover:text-[#735c00]" title="Edit items">
                     <span className="material-symbols-outlined text-xl">restaurant</span>
                   </button>
-                  <button onClick={() => setDrawerRes(res)} className="p-2 text-on-surface-variant hover:text-[#735c00]" title="Xem chi tiết">
+                  <button onClick={() => setDrawerRes(res)} className="p-2 text-on-surface-variant hover:text-[#735c00]" title="View details">
                     <span className="material-symbols-outlined text-xl">more_vert</span>
                   </button>
                 </td>
@@ -348,7 +348,7 @@ const OrdersManagement: React.FC = () => {
         {/* Pagination */}
         <div className="px-6 py-4 flex items-center justify-between bg-[#f3f4f5] border-t border-outline-variant/20">
           <p className="text-xs font-semibold text-on-surface-variant">
-            {filtered.length === 0 ? '0' : `${(safePage - 1) * PER_PAGE + 1}–${Math.min(safePage * PER_PAGE, filtered.length)}`} / {filtered.length} đơn
+            {filtered.length === 0 ? '0' : `${(safePage - 1) * PER_PAGE + 1}–${Math.min(safePage * PER_PAGE, filtered.length)}`} / {filtered.length} orders
           </p>
           <div className="flex gap-1">
             <button onClick={() => setCurrentPage(p => Math.max(p - 1, 1))} disabled={safePage === 1} className="p-2 rounded hover:bg-[#e1e3e4] disabled:opacity-30">
@@ -375,7 +375,7 @@ const OrdersManagement: React.FC = () => {
             <div className="p-6 border-b flex items-start justify-between bg-[#f3f4f5]">
               <div>
                 <h3 className="font-serif text-xl font-bold">{drawerRes.name}</h3>
-                <p className="text-on-surface-variant text-xs mt-0.5">{drawerRes.phone} • {drawerRes.partySize} khách</p>
+                <p className="text-on-surface-variant text-xs mt-0.5">{drawerRes.phone} • {drawerRes.partySize} guests</p>
                 <span className={`mt-2 inline-block text-[10px] px-3 py-1 rounded-full font-bold uppercase ${STATUS_STYLE[drawerRes.status] ?? ''}`}>
                   {drawerRes.status}
                 </span>
@@ -389,20 +389,20 @@ const OrdersManagement: React.FC = () => {
               {/* Booking info grid */}
               <div className="grid grid-cols-2 gap-3 text-xs">
                 <div className="bg-[#f8f9fa] rounded-lg p-3">
-                  <p className="text-on-surface-variant font-semibold uppercase mb-1">Ngày</p>
+                  <p className="text-on-surface-variant font-semibold uppercase mb-1">Date</p>
                   <p className="font-bold text-on-surface">{drawerRes.date}</p>
                 </div>
                 <div className="bg-[#f8f9fa] rounded-lg p-3">
-                  <p className="text-on-surface-variant font-semibold uppercase mb-1">Giờ</p>
+                  <p className="text-on-surface-variant font-semibold uppercase mb-1">Time</p>
                   <p className="font-bold text-on-surface">{drawerRes.time}{drawerRes.endTime ? ` – ${drawerRes.endTime}` : ''}</p>
                 </div>
                 <div className="bg-[#f8f9fa] rounded-lg p-3">
-                  <p className="text-on-surface-variant font-semibold uppercase mb-1">Bàn</p>
+                  <p className="text-on-surface-variant font-semibold uppercase mb-1">Table</p>
                   <p className="font-bold text-on-surface">{tableLabel(drawerRes.tableId)}</p>
                   {drawerRes.tableId && <p className="font-mono text-[10px] text-on-surface-variant mt-0.5">{drawerRes.tableId}</p>}
                 </div>
                 <div className="bg-[#f8f9fa] rounded-lg p-3">
-                  <p className="text-on-surface-variant font-semibold uppercase mb-1">Mã đơn</p>
+                  <p className="text-on-surface-variant font-semibold uppercase mb-1">Order ID</p>
                   <p className="font-mono text-[11px] text-on-surface break-all">{drawerRes.id}</p>
                 </div>
               </div>
@@ -410,14 +410,14 @@ const OrdersManagement: React.FC = () => {
               {/* Notes */}
               {drawerRes.notes && (
                 <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
-                  <p className="text-xs font-semibold text-amber-800 uppercase mb-1">📝 Ghi chú khách hàng</p>
+                  <p className="text-xs font-semibold text-amber-800 uppercase mb-1">📝 Customer Notes</p>
                   <p className="text-sm text-amber-900">{drawerRes.notes}</p>
                 </div>
               )}
 
               {/* Status action buttons */}
               <div>
-                <p className="text-xs font-semibold text-on-surface-variant uppercase mb-2">Cập nhật trạng thái</p>
+                <p className="text-xs font-semibold text-on-surface-variant uppercase mb-2">Update Status</p>
                 <div className="flex gap-2 flex-wrap">
                   {drawerRes.status === 'Pending' && (
                     <button
@@ -425,7 +425,7 @@ const OrdersManagement: React.FC = () => {
                       onClick={() => handleStatusUpdate(drawerRes, 'Confirmed')}
                       className="px-4 py-2 bg-green-600 text-white text-xs font-semibold rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
                     >
-                      {statusBusy === drawerRes.id ? '...' : '✓ Xác nhận đơn'}
+                      {statusBusy === drawerRes.id ? '...' : '✓ Confirm'}
                     </button>
                   )}
                   {drawerRes.status === 'Confirmed' && (
@@ -434,7 +434,7 @@ const OrdersManagement: React.FC = () => {
                       onClick={() => handleStatusUpdate(drawerRes, 'Completed')}
                       className="px-4 py-2 bg-[#735c00] text-white text-xs font-semibold rounded-lg hover:bg-[#5d4a00] disabled:opacity-50 transition-colors"
                     >
-                      {statusBusy === drawerRes.id ? '...' : '✓ Hoàn thành'}
+                      {statusBusy === drawerRes.id ? '...' : '✓ Complete'}
                     </button>
                   )}
                   {(drawerRes.status === 'Pending' || drawerRes.status === 'Confirmed') && (
@@ -443,7 +443,7 @@ const OrdersManagement: React.FC = () => {
                       onClick={() => handleStatusUpdate(drawerRes, 'Cancelled')}
                       className="px-4 py-2 bg-red-50 text-red-700 border border-red-200 text-xs font-semibold rounded-lg hover:bg-red-100 disabled:opacity-50 transition-colors"
                     >
-                      Hủy đơn
+                      Cancel Order
                     </button>
                   )}
                 </div>
@@ -451,9 +451,9 @@ const OrdersManagement: React.FC = () => {
 
               {/* Items list */}
               <div>
-                <p className="text-xs font-semibold text-on-surface-variant uppercase mb-3">Danh sách món ({drawerRes.items.length})</p>
+                <p className="text-xs font-semibold text-on-surface-variant uppercase mb-3">Items ({drawerRes.items.length})</p>
                 {drawerRes.items.length === 0 ? (
-                  <p className="text-xs text-on-surface-variant italic">Chưa có món nào.</p>
+                  <p className="text-xs text-on-surface-variant italic">No items yet.</p>
                 ) : (
                   <div className="space-y-3">
                     {drawerRes.items.map(item => (
@@ -479,7 +479,7 @@ const OrdersManagement: React.FC = () => {
               {/* Total */}
               <div className="bg-[#f3f4f5] p-4 rounded-lg">
                 <div className="flex justify-between items-center">
-                  <span className="font-bold text-on-surface text-sm">Tổng cộng</span>
+                  <span className="font-bold text-on-surface text-sm">Total</span>
                   <span className="text-xl font-serif font-bold text-[#735c00]">{fmtVnd(drawerRes.total)}</span>
                 </div>
               </div>
@@ -487,7 +487,7 @@ const OrdersManagement: React.FC = () => {
 
             <div className="p-6 border-t bg-white">
               <button className="w-full bg-[#735c00] text-white text-xs font-semibold py-3 rounded-lg hover:bg-[#5d4a00] transition-colors" onClick={() => setDrawerRes(null)}>
-                Đóng
+                Close
               </button>
             </div>
           </div>
@@ -501,47 +501,47 @@ const OrdersManagement: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-8">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="font-serif text-2xl font-bold text-on-surface">Sửa Thông Tin</h3>
+              <h3 className="font-serif text-2xl font-bold text-on-surface">Edit Booking</h3>
               <button className="p-1 hover:bg-[#f3f4f5] rounded-full" onClick={() => setEditModal(null)}>
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-on-surface-variant mb-1">Tên khách hàng</label>
+                <label className="block text-xs font-semibold text-on-surface-variant mb-1">Guest Name</label>
                 <input className="w-full bg-[#f8f9fa] border border-outline-variant/30 rounded-lg p-3 text-sm" value={editModal.name} onChange={e => setEditModal({ ...editModal, name: e.target.value })} />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-on-surface-variant mb-1">Số điện thoại</label>
+                <label className="block text-xs font-semibold text-on-surface-variant mb-1">Phone Number</label>
                 <input className="w-full bg-[#f8f9fa] border border-outline-variant/30 rounded-lg p-3 text-sm" value={editModal.phone} onChange={e => setEditModal({ ...editModal, phone: e.target.value })} />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-on-surface-variant mb-1">Ghi chú đặc biệt</label>
-                <textarea className="w-full bg-[#f8f9fa] border border-outline-variant/30 rounded-lg p-3 text-sm resize-none" rows={2} placeholder="Dị ứng, yêu cầu đặc biệt..." value={editModal.notes} onChange={e => setEditModal({ ...editModal, notes: e.target.value })} />
+                <label className="block text-xs font-semibold text-on-surface-variant mb-1">Special Notes</label>
+                <textarea className="w-full bg-[#f8f9fa] border border-outline-variant/30 rounded-lg p-3 text-sm resize-none" rows={2} placeholder="Allergies, special requests..." value={editModal.notes} onChange={e => setEditModal({ ...editModal, notes: e.target.value })} />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-on-surface-variant mb-1">Ngày</label>
+                  <label className="block text-xs font-semibold text-on-surface-variant mb-1">Date</label>
                   <input type="date" className="w-full bg-[#f8f9fa] border border-outline-variant/30 rounded-lg p-3 text-sm" value={editModal.date} onChange={e => setEditModal({ ...editModal, date: e.target.value })} />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-on-surface-variant mb-1">Số khách</label>
+                  <label className="block text-xs font-semibold text-on-surface-variant mb-1">Guests</label>
                   <input type="number" min={1} className="w-full bg-[#f8f9fa] border border-outline-variant/30 rounded-lg p-3 text-sm" value={editModal.partySize} onChange={e => setEditModal({ ...editModal, partySize: parseInt(e.target.value) || 1 })} />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-on-surface-variant mb-1">Giờ bắt đầu</label>
+                  <label className="block text-xs font-semibold text-on-surface-variant mb-1">Start Time</label>
                   <input type="time" className="w-full bg-[#f8f9fa] border border-outline-variant/30 rounded-lg p-3 text-sm" value={editModal.time} onChange={e => setEditModal({ ...editModal, time: e.target.value })} />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-on-surface-variant mb-1">Giờ kết thúc</label>
+                  <label className="block text-xs font-semibold text-on-surface-variant mb-1">End Time</label>
                   <input type="time" className="w-full bg-[#f8f9fa] border border-outline-variant/30 rounded-lg p-3 text-sm" value={editModal.endTime} onChange={e => setEditModal({ ...editModal, endTime: e.target.value })} />
                 </div>
               </div>
               <div className="flex gap-4 mt-2">
-                <button className="flex-1 border border-outline-variant text-xs py-3 rounded-lg" onClick={() => setEditModal(null)}>Hủy</button>
-                <button className="flex-1 bg-[#735c00] text-white text-xs py-3 rounded-lg hover:bg-[#5d4a00]" onClick={saveBooking}>Lưu thay đổi</button>
+                <button className="flex-1 border border-outline-variant text-xs py-3 rounded-lg" onClick={() => setEditModal(null)}>Cancel</button>
+                <button className="flex-1 bg-[#735c00] text-white text-xs py-3 rounded-lg hover:bg-[#5d4a00]" onClick={saveBooking}>Save Changes</button>
               </div>
             </div>
           </div>
@@ -556,7 +556,7 @@ const OrdersManagement: React.FC = () => {
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto p-8">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h3 className="font-serif text-2xl font-bold text-on-surface">Sửa Món Ăn</h3>
+                <h3 className="font-serif text-2xl font-bold text-on-surface">Edit Items</h3>
                 <p className="text-xs text-on-surface-variant">{orderModal.name} — {orderModal.date}</p>
               </div>
               <button className="p-1 hover:bg-[#f3f4f5] rounded-full" onClick={() => setOrderModal(null)}>
@@ -567,7 +567,7 @@ const OrdersManagement: React.FC = () => {
             {/* Current items */}
             <div className="space-y-2 mb-5 max-h-52 overflow-y-auto pr-1">
               {orderModal.items.length === 0 ? (
-                <p className="text-center text-xs text-on-surface-variant py-4 italic">Chưa có món nào.</p>
+                <p className="text-center text-xs text-on-surface-variant py-4 italic">No items yet.</p>
               ) : orderModal.items.map(item => (
                 <div key={item.id} className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
                   <div className="flex-grow">
@@ -588,11 +588,11 @@ const OrdersManagement: React.FC = () => {
 
             {/* Add item from menu */}
             <div className="p-4 bg-[#ffe088]/10 rounded-xl border border-[#ffe088]/30">
-              <label className="block text-xs font-bold text-[#574500] mb-2 uppercase">Thêm món từ thực đơn</label>
+              <label className="block text-xs font-bold text-[#574500] mb-2 uppercase">Add from Menu</label>
               <div className="relative">
                 <input
                   className="w-full px-3 py-2 bg-white border border-outline-variant rounded-lg text-xs"
-                  placeholder="Gõ tên món để tìm kiếm..."
+                  placeholder="Type to search..."
                   type="text"
                   value={addSearch}
                   onChange={e => setAddSearch(e.target.value)}
@@ -617,15 +617,15 @@ const OrdersManagement: React.FC = () => {
 
             {/* Subtotal preview */}
             <div className="mt-4 flex justify-between items-center text-sm font-bold text-on-surface">
-              <span>Tạm tính</span>
+              <span>Subtotal</span>
               <span className="text-[#735c00]">
                 {fmtVnd(orderModal.items.reduce((s, i) => s + i.price * i.quantity, 0))}
               </span>
             </div>
 
             <div className="flex gap-4 mt-5">
-              <button className="flex-1 border border-outline-variant text-xs py-3 rounded-lg" onClick={() => setOrderModal(null)}>Hủy</button>
-              <button className="flex-1 bg-[#735c00] text-white text-xs py-3 rounded-lg hover:bg-[#5d4a00]" onClick={saveOrderItems}>Lưu thay đổi</button>
+              <button className="flex-1 border border-outline-variant text-xs py-3 rounded-lg" onClick={() => setOrderModal(null)}>Cancel</button>
+              <button className="flex-1 bg-[#735c00] text-white text-xs py-3 rounded-lg hover:bg-[#5d4a00]" onClick={saveOrderItems}>Save Changes</button>
             </div>
           </div>
         </div>

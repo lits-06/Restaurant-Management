@@ -1,20 +1,63 @@
 import { useAuthStore } from '../store/authStore'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080'
-const WS_BASE = import.meta.env.VITE_WS_BASE_URL ?? 'ws://localhost:8080'
+const WS_BASE  = import.meta.env.VITE_WS_BASE_URL  ?? 'ws://localhost:8080'
+
+// Deduplicates concurrent refresh calls into one in-flight promise
+let refreshing: Promise<string | null> | null = null
+
+const tryRefreshToken = (): Promise<string | null> => {
+  if (refreshing) return refreshing
+  const { refreshToken, user, setAuth, clearAuth } = useAuthStore.getState()
+  if (!refreshToken || !user) return Promise.resolve(null)
+
+  refreshing = fetch(`${API_BASE}/auth/refresh`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refresh_token: refreshToken }),
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (data.access_token) {
+        setAuth(user, data.access_token, refreshToken)
+        return data.access_token as string
+      }
+      clearAuth()
+      return null
+    })
+    .catch(() => { clearAuth(); return null })
+    .finally(() => { refreshing = null })
+
+  return refreshing
+}
 
 const req = async <T>(path: string, init?: RequestInit): Promise<T> => {
   const token = useAuthStore.getState().accessToken
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init?.headers ?? {}),
-    },
-  })
+
+  const makeRequest = (tok: string | null) =>
+    fetch(`${API_BASE}${path}`, {
+      ...init,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(tok ? { Authorization: `Bearer ${tok}` } : {}),
+        ...(init?.headers ?? {}),
+      },
+    })
+
+  let res = await makeRequest(token)
+
+  if (res.status === 401) {
+    const newToken = await tryRefreshToken()
+    if (newToken) {
+      res = await makeRequest(newToken)
+    }
+  }
+
   const data = await res.json().catch(() => ({}))
   if (!res.ok || data.success === false) {
+    if (res.status === 401) {
+      useAuthStore.getState().clearAuth()
+    }
     throw new Error(data.message || data.error || `HTTP ${res.status}`)
   }
   return data as T

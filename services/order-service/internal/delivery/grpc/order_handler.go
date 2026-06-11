@@ -116,23 +116,23 @@ func (h *OrderHandler) UpdateOrder(ctx context.Context, req *order.UpdateOrderRe
 }
 
 // DeleteOrder deletes an order.
-// func (h *OrderHandler) DeleteOrder(ctx context.Context, req *order.DeleteOrderRequest) (*order.DeleteOrderResponse, error) {
-// 	logger.Info("DeleteOrder request", zap.String("order_id", req.OrderId))
+func (h *OrderHandler) DeleteOrder(ctx context.Context, req *order.DeleteOrderRequest) (*order.DeleteOrderResponse, error) {
+	logger.Info("DeleteOrder request", zap.String("order_id", req.OrderId))
 
-// 	if req.OrderId == "" {
-// 		return &order.DeleteOrderResponse{Success: false, Message: "order_id is required"}, nil
-// 	}
+	if req.OrderId == "" {
+		return &order.DeleteOrderResponse{Success: false, Message: "order_id is required"}, nil
+	}
 
-// 	if err := h.orderUseCase.DeleteOrder(ctx, req.OrderId); err != nil {
-// 		if errors.Is(err, domain.ErrOrderNotFound) {
-// 			return &order.DeleteOrderResponse{Success: false, Message: "order not found"}, nil
-// 		}
-// 		logger.Error("Failed to delete order", zap.Error(err))
-// 		return &order.DeleteOrderResponse{Success: false, Message: err.Error()}, nil
-// 	}
+	if err := h.orderUseCase.DeleteOrder(ctx, req.OrderId); err != nil {
+		if errors.Is(err, domain.ErrOrderNotFound) {
+			return &order.DeleteOrderResponse{Success: false, Message: "order not found"}, nil
+		}
+		logger.Error("Failed to delete order", zap.Error(err))
+		return &order.DeleteOrderResponse{Success: false, Message: err.Error()}, nil
+	}
 
-// 	return &order.DeleteOrderResponse{Success: true, Message: "order deleted successfully"}, nil
-// }
+	return &order.DeleteOrderResponse{Success: true, Message: "order deleted successfully"}, nil
+}
 
 // CancelOrder cancels an order.
 func (h *OrderHandler) CancelOrder(ctx context.Context, req *order.CancelOrderRequest) (*order.CancelOrderResponse, error) {

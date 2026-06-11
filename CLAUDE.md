@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Full-stack restaurant management system built with microservices architecture. Backend in Go (Clean Architecture + gRPC), two React frontends (customer app + admin dashboard), communicating via an HTTP/REST API Gateway.
+Full-stack restaurant management system built with microservices architecture. Backend in Go (Clean Architecture + gRPC), three React frontends (customer app + admin dashboard + kitchen display), communicating via an HTTP/REST API Gateway.
 
 ---
 
@@ -30,7 +30,7 @@ Restaurant_Management/
 └── go.mod / go.sum          # Root Go module (restaurant-management)
 ```
 
-> **Note:** `payment-service` proto/files have been removed. `user-service` has been recreated with a new design (port 50056, 5 roles, PostgreSQL).
+> **Note:** `payment-service` and `staff-service` proto/files have been removed. `user-service` has been recreated with a new design (port 50056, 5 roles, PostgreSQL). `staff-service` was replaced by `schedule-service` (2026-06-10); the `services/staff-service/` and `proto/staff/` directories were deleted (2026-06-11).
 
 ---
 
@@ -51,9 +51,9 @@ Restaurant_Management/
 - **React 19** + **Vite 8** + **TypeScript**
 - **TailwindCSS** — styling
 - **Zustand** — state management (persist key: `kitchen-auth`)
-- **Native WebSocket API** — real-time notifications (không dùng socket.io)
+- **Native WebSocket API** — real-time notifications (no socket.io)
 - **lucide-react** — icons
-- No react-router — state-based routing (`useState` cho view switching)
+- No react-router — state-based routing (`useState` for view switching)
 
 ### Backend (all services)
 - **Go 1.25+** — each service has its **own `go.mod`** (module path: `restaurant-management/services/<name>-service`)
@@ -110,7 +110,7 @@ go run cmd/server/main.go
 
 ### Full Stack (Docker)
 ```bash
-docker-compose up          # starts postgres, redis, auth, menu, staff, table, order, notification, user, api-gateway
+docker-compose up          # starts postgres, redis, auth, menu, schedule, table, order, notification, user, api-gateway
 docker-compose up --build  # rebuild images
 docker-compose down
 ```
@@ -142,19 +142,22 @@ Translates HTTP REST → gRPC. Uses Go's standard `net/http` mux (no framework).
 **Environment Variables:**
 ```
 SERVER_PORT=8080
-AUTH_SERVICE_HOST=localhost   AUTH_SERVICE_PORT=50051
-MENU_SERVICE_HOST=localhost   MENU_SERVICE_PORT=50054
-ORDER_SERVICE_HOST=localhost  ORDER_SERVICE_PORT=50055
-STAFF_SERVICE_HOST=localhost  STAFF_SERVICE_PORT=50052
-TABLE_SERVICE_HOST=localhost  TABLE_SERVICE_PORT=50053
-USER_SERVICE_HOST=localhost        USER_SERVICE_PORT=50056
+AUTH_SERVICE_HOST=localhost     AUTH_SERVICE_PORT=50051
+SCHEDULE_SERVICE_HOST=localhost SCHEDULE_SERVICE_PORT=50052
+TABLE_SERVICE_HOST=localhost    TABLE_SERVICE_PORT=50053
+MENU_SERVICE_HOST=localhost     MENU_SERVICE_PORT=50054
+ORDER_SERVICE_HOST=localhost    ORDER_SERVICE_PORT=50055
+USER_SERVICE_HOST=localhost     USER_SERVICE_PORT=50056
 NOTIFICATION_SERVICE_HOST=localhost NOTIFICATION_SERVICE_PORT=50058
 ENVIRONMENT=development
 ```
 
 ### Implemented Endpoints
 
+Auth legend: `public` = no auth, `optional` = token used if present, `staff` = any staff role, `admin` = ADMIN/MANAGER only, `chef` = CHEF/ADMIN/MANAGER, `waiter` = WAITER/ADMIN/MANAGER
+
 ```
+# ── Auth ──────────────────────────────────────────────────────── public
 POST   /auth/register
 POST   /auth/login
 POST   /auth/refresh
@@ -162,6 +165,7 @@ POST   /auth/verify
 POST   /auth/logout
 POST   /auth/change-password
 
+# ── Menu ──────────────────────────────────────────────────────── public (no role checks)
 GET    /menu/items
 POST   /menu/items
 GET    /menu/items/{id}
@@ -174,23 +178,26 @@ GET    /menu/categories/{id}
 PUT    /menu/categories/{id}
 DELETE /menu/categories/{id}
 
-GET    /orders
-POST   /orders
-GET    /orders/{id}
-PUT    /orders/{id}
-DELETE /orders/{id}
-POST   /orders/{id}/cancel
-PATCH  /orders/{id}/status
-POST   /orders/{id}/items
-DELETE /orders/{id}/items/{itemId}
-PATCH  /orders/{id}/items/{itemId}/status
+# ── Orders ────────────────────────────────────────────────────── mixed
+GET    /orders                                   # public; filter by user_id → owner or staff only
+POST   /orders                                   # optional auth; user_id auto-set from token if present
+GET    /orders/{id}                              # optional; owner or staff
+PUT    /orders/{id}                              # optional; owner or staff
+DELETE /orders/{id}                              # optional; owner or staff
+POST   /orders/{id}/cancel                       # optional; owner or staff
+PATCH  /orders/{id}/status                       # staff (ADMIN/MANAGER/CHEF/WAITER)
+POST   /orders/{id}/items                        # optional; owner or staff
+DELETE /orders/{id}/items/{itemId}               # optional; owner or staff
+PATCH  /orders/{id}/items/{itemId}/status        # chef (COOKING/READY) or waiter (SERVED)
 
-GET    /staff
-POST   /staff
-GET    /staff/{id}
-PUT    /staff/{id}
-DELETE /staff/{id}
+# ── Schedule ──────────────────────────────────────────────────── staff required
+GET    /schedule/shifts                          # staff; any role
+POST   /schedule/shifts                          # staff; self-register or admin assigns others
+GET    /schedule/shifts/{id}                     # staff; owner or admin
+PUT    /schedule/shifts/{id}                     # staff; owner or admin
+DELETE /schedule/shifts/{id}                     # staff; owner or admin
 
+# ── Tables ────────────────────────────────────────────────────── public (no role checks)
 GET    /tables
 POST   /tables
 GET    /tables/available
@@ -199,6 +206,7 @@ PUT    /tables/{id}
 DELETE /tables/{id}
 PATCH  /tables/{id}/status
 
+# ── Users ─────────────────────────────────────────────────────── public (no role checks)
 GET    /users/by-email?email=...
 GET    /users
 POST   /users
@@ -209,9 +217,10 @@ GET    /users/{id}/roles
 PATCH  /users/{id}/roles
 PATCH  /users/{id}/password
 
-GET    /health
+# ── Misc ──────────────────────────────────────────────────────────────
+GET    /health                                   # public
 
-GET    /ws/notifications?token=<jwt>&role=<CHEF|WAITER>   (WebSocket upgrade)
+GET    /ws/notifications?token=<jwt>&role=<CHEF|WAITER>   # WebSocket; token required; role-validated
 ```
 
 ---
@@ -342,11 +351,11 @@ Manager → UpdateOrderStatus(Completed) when customer pays (manual)
 **Proto:** `proto/notification/notification.proto`
 **Status:** Active — enabled in docker-compose.
 
-Pub/Sub message bus cho kitchen staff. **Không có DB** — dùng Redis Pub/Sub thuần túy.
+Pub/Sub message bus for kitchen staff. **No DB** — pure Redis Pub/Sub.
 
 #### 2 RPCs:
-- `SendNotification(SendNotificationRequest)` — publish notification vào Redis channel `notifications:{target_role}`
-- `Subscribe(SubscribeRequest) returns (stream Notification)` — subscribe Redis channel, stream notifications đến client (dùng cho WebSocket gateway)
+- `SendNotification(SendNotificationRequest)` — publish notification to Redis channel `notifications:{target_role}`
+- `Subscribe(SubscribeRequest) returns (stream Notification)` — subscribe Redis channel, stream notifications to client (used by WebSocket gateway)
 
 #### Notification types:
 | Type | Trigger | Target | Payload |
@@ -359,14 +368,38 @@ Pub/Sub message bus cho kitchen staff. **Không có DB** — dùng Redis Pub/Sub
 
 **Redis channels:** `notifications:CHEF`, `notifications:WAITER`
 
-**Notification flow** (fire-and-forget, không block order operations):
+**Notification flow** (fire-and-forget, does not block order operations):
 ```
 order-service usecase → notifClient.SendNotification (background goroutine)
   → notification-service gRPC → Redis PUBLISH notifications:{role}
-  → (future) api-gateway WebSocket → browser
+  → api-gateway WebSocket → browser
 ```
 
 **Config env vars:** `SERVER_PORT=50058`, `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_DB`
+
+---
+
+### Report Service (`services/report-service`, port 50059)
+**Proto:** `proto/report/report.proto`
+**Status:** gRPC handler implemented — **NOT wired into docker-compose or api-gateway yet.**
+
+#### 7 RPCs:
+| RPC | Request key fields | Response |
+|-----|--------------------|----------|
+| `GetSalesReport` | period, from_date, to_date | SalesReport (revenue, order_count, avg_order_value) |
+| `GetInventoryReport` | as_of_date | InventoryReport (items with stock levels) |
+| `GetOrderReport` | period, from_date, to_date | OrderReport (counts by status, hourly breakdown) |
+| `GetStaffPerformanceReport` | period, from_date, to_date, staff_id | StaffPerformance[] (orders handled, avg time) |
+| `GetPopularItemsReport` | period, from_date, to_date, top_n | PopularItem[] (name, order_count, revenue) |
+| `GetRevenueAnalytics` | period, from_date, to_date | RevenueAnalytics (daily/monthly breakdown) |
+| `ExportReport` | report_type, format, period, from_date, to_date | file_data (bytes), file_name, content_type |
+
+**Known issues in current implementation:**
+- `pkg/config/config.go` has `UserServiceAddr` defaulting to `localhost:50052` (wrong — should be `localhost:50056`)
+- No HTTP routes registered in api-gateway
+- Not in docker-compose
+
+**Config env vars:** `SERVER_PORT=50059`, `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_SSLMODE`, `ORDER_SERVICE_ADDR`, `MENU_SERVICE_ADDR`, `USER_SERVICE_ADDR`
 
 ---
 
@@ -374,19 +407,19 @@ order-service usecase → notifClient.SendNotification (background goroutine)
 **Proto:** `proto/user/user.proto`
 **Status:** Active — enabled in docker-compose, routes wired in api-gateway.
 
-Quản lý **danh tính và phân quyền** cho toàn bộ người dùng hệ thống.
+Manages user identity and access control for the entire system.
 
 #### 5 Roles:
-| Role | Mô tả |
-|------|-------|
-| `USER` | Khách hàng — đặt bàn, xem order của bản thân (phải đăng nhập) |
-| `MANAGER` | Tạo order walk-in, thêm món, cập nhật trạng thái order sau thanh toán |
-| `CHEF` | Xem món trong order, đánh dấu món đã nấu xong |
-| `WAITER` | Nhận thông báo từ chef, mang món ra phục vụ |
-| `ADMIN` | Toàn quyền — dashboard, quản lý menu/user/order/bàn |
+| Role | Description |
+|------|-------------|
+| `USER` | Customer — make reservations, view own orders (must be logged in) |
+| `MANAGER` | Create walk-in orders, add items, update order status after payment |
+| `CHEF` | View order items, mark items as cooked |
+| `WAITER` | Receive notifications from chef, serve items to customers |
+| `ADMIN` | Full access — dashboard, manage menu/users/orders/tables |
 
-#### 9 RPCs:
-CreateUser, GetUser, GetUserByEmail, UpdateUser, DeleteUser, ListUsers, AssignRole, GetUserRoles, ChangePassword
+#### 10 RPCs:
+CreateUser, GetUser, GetUserByEmail, UpdateUser, DeleteUser, ListUsers, AssignRole, GetUserRoles, ChangePassword, VerifyCredentials
 
 #### User entity:
 | Field | Type | Notes |
@@ -399,7 +432,7 @@ CreateUser, GetUser, GetUserByEmail, UpdateUser, DeleteUser, ListUsers, AssignRo
 | `roles` | []UserRole | Comma-separated in DB (e.g. `"USER,ADMIN"`) |
 | `status` | UserStatus | ACTIVE / INACTIVE / SUSPENDED |
 
-Default role khi tạo user: `USER`
+Default role on user creation: `USER`
 
 **DB table:** `users`
 
@@ -413,7 +446,7 @@ DB schema: `users` table (no roles column) + `user_roles` junction table. All Cr
 **Proto:** `proto/schedule/schedule.proto`
 **Status:** Active — replaced staff-service (2026-06-10).
 
-Quản lý ca làm việc cho nhân viên bếp. **Không có status field** — shift tồn tại = đã xác nhận. Xóa = hủy ca.
+Manages work shifts for kitchen staff. **No status field** — a shift's existence means it is confirmed. Delete = cancel shift.
 
 - 5 RPCs: CreateShift, GetShift, UpdateShift, DeleteShift, ListShifts
 - `Shift`: ShiftID, UserID, Date (YYYY-MM-DD), StartTime (HH:MM), EndTime, Role, Notes, CreatedBy, CreatedAt, UpdatedAt
@@ -427,7 +460,7 @@ Quản lý ca làm việc cho nhân viên bếp. **Không có status field** —
 **Proto:** `proto/table/table.proto`
 **Status:** Active — enabled in docker-compose, routes wired in api-gateway.
 
-Quản lý **thông tin tĩnh và trạng thái vật lý** của bàn. Không quản lý time-slot booking.
+Manages **static information and physical status** of tables. Does not manage time-slot booking.
 
 #### 7 RPCs:
 CreateTable, GetTable, UpdateTable, DeleteTable, ListTables, UpdateTableStatus, GetAvailableTables
@@ -441,12 +474,12 @@ CreateTable, GetTable, UpdateTable, DeleteTable, ListTables, UpdateTableStatus, 
 | `status` | TableStatus | AVAILABLE / CLEANING / OUT_OF_SERVICE |
 
 #### Table statuses: `AVAILABLE`, `CLEANING`, `OUT_OF_SERVICE`
-- Status chỉ phản ánh trạng thái vật lý — không liên quan đến booking
-- Time-slot availability được tính từ bảng `orders` trong order-service
+- Status reflects physical state only — unrelated to booking availability
+- Time-slot availability is derived from the `orders` table in order-service
 
 **DB table:** `restaurant_tables` (1 bảng duy nhất)
 
-**`GetAvailableTables`** — được gọi bởi order-service khi auto-assign:
+**`GetAvailableTables`** — called by order-service during auto-assign:
 ```sql
 SELECT * FROM restaurant_tables
 WHERE status = 'AVAILABLE' AND capacity >= $min_capacity
@@ -475,7 +508,7 @@ Active proto definitions (source of truth — do not edit generated `*.pb.go` fi
 - `proto/auth/auth.proto`
 - `proto/menu/menu.proto`
 - `proto/order/order.proto`
-- `proto/staff/staff.proto`
+- `proto/schedule/schedule.proto`
 - `proto/table/table.proto`
 - `proto/user/user.proto`
 - `proto/notification/notification.proto`
@@ -494,23 +527,23 @@ src/
   api/         # gateway.api.ts — ordersApi, authApi, usersApi, scheduleApi, createNotificationWS
   hooks/       # useNotifications.ts — WebSocket hook, giữ tối đa 50 notif
   pages/
-    LoginPage.tsx    # Dark theme, kiểm tra CHEF/WAITER/ADMIN/MANAGER role
+    LoginPage.tsx    # Dark theme, checks CHEF/WAITER/ADMIN/MANAGER role
     KitchenPage.tsx  # CHEF view — confirmed orders, mark COOKING/READY per item
     WaiterPage.tsx   # WAITER view — READY items feed + notification sidebar, mark SERVED
-    SchedulePage.tsx # My schedule — view/register own shifts (self-service)
-  App.tsx      # Auth gate + role routing; floating switcher 🍳/🛎/📅 cho tất cả roles
+    SchedulePage.tsx # My Schedule — view/register own shifts (self-service)
+  App.tsx      # Auth gate + role routing; floating switcher 🍳/🛎/📅 for all roles
 ```
 
 **Role routing** (`ActiveView = 'CHEF' | 'WAITER' | 'SCHEDULE'`):
-- CHEF → KitchenPage mặc định + floating switcher (🍳 Bếp + 📅 Lịch)
-- WAITER → WaiterPage mặc định + floating switcher (🛎 Phục vụ + 📅 Lịch)
-- ADMIN/MANAGER → KitchenPage mặc định + floating switcher (🍳 Bếp + 🛎 Phục vụ + 📅 Lịch)
+- CHEF → KitchenPage default + floating switcher (🍳 Kitchen + 📅 Schedule)
+- WAITER → WaiterPage default + floating switcher (🛎 Service + 📅 Schedule)
+- ADMIN/MANAGER → KitchenPage default + floating switcher (🍳 Kitchen + 🛎 Service + 📅 Schedule)
 
 **WebSocket:** `ws://localhost:8080/ws/notifications?token=<jwt>&role=<CHEF|WAITER>`
-- KitchenPage (CHEF): nhận `ORDER_CONFIRMED` → auto-refresh danh sách order
-- WaiterPage (WAITER): nhận `ITEM_READY` → auto-refresh + hiển thị notification sidebar
+- KitchenPage (CHEF): receives `ORDER_CONFIRMED` → auto-refresh order list
+- WaiterPage (WAITER): receives `ITEM_READY` → auto-refresh + show notification sidebar
 
-**Known gap:** `table_id` hiển thị dạng UUID (8 ký tự đầu) — chưa resolve `table_number` từ table-service.
+**Note:** Kitchen app notifications still display `table_id` as truncated UUID (known gap) — customer app `MyOrdersPage` already fixed this (uses `tableApi.list()` to resolve table_number).
 
 ---
 
@@ -519,7 +552,7 @@ src/
 **Routing:** `App.tsx` uses `currentPage` useState (not react-router). Protected pages: `reservation`, `my-orders` — redirect to `login` with `loginRedirect` state to return after success.
 ```
 src/
-  api/            # gateway.api.ts — all API calls, auto-injects Authorization header
+  api/            # gateway.api.ts — token refresh interceptor + all API calls
   store/          # authStore.ts
   components/
     booking/      # Reservation components
@@ -528,15 +561,24 @@ src/
     layout/       # Header, Footer
     ui/           # UI primitives
   pages/
-    HomePage, MenuPage, ReservationPage, ContactPage
+    HomePage, ContactPage
+    MenuPage.tsx     # loads from API: GET /menu/categories + GET /menu/items; category filter tabs
+    ReservationPage.tsx  # POST /orders flow; API menu for pre-order
     LoginPage.tsx    # login + register tabs; pre-fills email on register success
-    MyOrdersPage.tsx # loads via ordersApi.list({user_id}); add items, 2-step cancel
+    MyOrdersPage.tsx # loads via ordersApi.list({user_id}); resolves table_id→table_number; add items, 2-step cancel
   hooks/          # useAutoSlider, useHeaderScroll
   lib/            # constants.ts, types.ts
   assets/images/  # food images (jpg)
 ```
 
-**TopNavBar** shows: logo + nav links + "My Orders" (auth only) + user name + logout (auth) OR "Đăng nhập" + "Book Now" (anonymous).
+**`gateway.api.ts` key exports:**
+- `menuApi.listItems`, `menuApi.listCategories`
+- `tableApi.getOne`, `tableApi.list`
+- `ordersApi.create/getOne/list/cancel/addItem`
+- `authApi.login/register/logout/changePassword`
+- Token refresh: 401 → `POST /auth/refresh` → retry; `clearAuth()` on second 401
+
+**TopNavBar** shows: logo + nav links + "My Orders" (auth only) + user name (`full_name || username`) + "Sign Out" (auth) OR "Sign In" + "Book Now" (anonymous).
 
 ### restaurant-app-admin (Admin Dashboard)
 **State management:** `src/store/adminAuthStore.ts` — Zustand + persist (`luxe-admin-auth`). `hasAdminAccess(roles)` checks for ADMIN/MANAGER/CHEF/WAITER.
@@ -550,14 +592,20 @@ src/
     AnalyticsOverview.tsx  # real month filtering, trend vs prev month, status breakdown
     MenuManagement.tsx     # CRUD with category dropdown from API
     OrdersManagement.tsx   # full order mgmt: status update, notes, end_time, table name, item_status
-    MonthlyScheduler.tsx   # monthly shift calendar grid
-  services/       # api.ts (injects auth token in all requests), auth.ts
+    MonthlyScheduler.tsx   # monthly shift calendar grid; create + edit + delete shifts
+    TableManagement.tsx    # CRUD bàn: create/edit/delete + status update (AVAILABLE/CLEANING/OUT_OF_SERVICE)
+    UserManagement.tsx     # CRUD user + role assignment + change password
+  services/       # api.ts — token refresh interceptor + all endpoints
 ```
 
 **`services/api.ts` key exports:**
 - `ordersApi`: `list`, `update` (notes+end_time), `updateStatus`, `updateItemStatus`, `cancel`, `delete`
-- `tablesApi.list` — load all tables for UUID → table_number resolution
-- `menuApi`, `scheduleApi`, `usersApi`, `authApi`
+- `tablesApi`: `list`, `create`, `update`, `delete`, `updateStatus`
+- `menuApi`: `listItems`, `createItem`, `updateItem`, `deleteItem`, `listCategories`, `createCategory`, `updateCategory`, `deleteCategory`
+- `usersApi`: `getOne`, `listAll`, `create`, `update`, `delete`, `assignRole`, `changePassword`
+- `scheduleApi`: `list`, `create`, `update`, `delete`
+- `authApi`: `login`, `logout`, `changePassword`
+- Token refresh: 401 → `POST /auth/refresh` → retry; `clearAuth()` on second 401
 - `TableDto`: `table_id, table_number, capacity, status`
 
 ---
@@ -588,12 +636,12 @@ Binaries are compiled locally and volume-mounted as `./server` inside each Alpin
 6. **JWT + Redis** — stateless access tokens, revocable refresh tokens stored in Redis
 7. **Proto-first design** — `.proto` files define all contracts; regenerate with `scripts/generate-proto.sh`
 8. **Structured logging** — `go.uber.org/zap` via `shared/pkg/logger`
-9. **Redis Pub/Sub** — notification-service dùng Redis channels (`notifications:CHEF`, `notifications:WAITER`) làm message bus; order-service publish fire-and-forget
-10. **WebSocket + gRPC streaming** — api-gateway bridges browser WebSocket → notification-service `Subscribe` streaming RPC; context cancel trên WebSocket close tự đóng gRPC stream
+9. **Redis Pub/Sub** — notification-service uses Redis channels (`notifications:CHEF`, `notifications:WAITER`) as message bus; order-service publishes fire-and-forget
+10. **WebSocket + gRPC streaming** — api-gateway bridges browser WebSocket → notification-service `Subscribe` streaming RPC; context cancel on WebSocket close automatically closes gRPC stream
 
 ---
 
-## Current State (as of 2026-06-10)
+## Current State (as of 2026-06-11)
 
 ### Backend refactor (2026-06-09)
 - **table-service**: Stripped down to physical registry only. Removed all Reservation RPCs, `location` field, `OCCUPIED`/`RESERVED` statuses. Now has 7 RPCs, 1 DB table, 3 statuses (AVAILABLE/CLEANING/OUT_OF_SERVICE). Re-enabled in docker-compose.
@@ -607,10 +655,26 @@ Binaries are compiled locally and volume-mounted as `./server` inside each Alpin
 - **`restaurant-app/src/api/gateway.api.ts`**: Removed `ReservationDto`, `tableApi.createReservation` (called `/reservations` which no longer exists). Updated `ordersApi.create` to accept `end_time`, `notes`, optional `table_id`. Updated `TableDto` (`table_number: number`, removed `location`). Replaced `tableApi.getAvailable` with `tableApi.getOne`.
 - **`restaurant-app/src/pages/ReservationPage.tsx`**: Replaced old reservation flow with `POST /orders`. Removed explicit table selection (auto-assign). Added `selectedEndTime` (default start+2h, user-adjustable). Time pickers bounded to operating hours 10:00–22:00 (frontend-only constraint). Simplified billing to pre-order subtotal only.
 
-### In progress / uncommitted changes
-- `restaurant-app-admin/src/pages/MenuManagement.tsx` — modified
-- `restaurant-app-admin/src/pages/OrdersManagement.tsx` — modified
-- Food item images added to both apps (`src/assets/images/`, `public/images/`) — untracked
+### UI Localization — all 3 apps (2026-06-11)
+
+All frontend text translated to **English**. No Vietnamese strings remain in any component.
+
+**restaurant-app (customer):**
+- All pages translated: TopNavBar, LoginPage, MenuPage, ReservationPage, MyOrdersPage
+- Currency changed from USD (`$X.XX`) to VND (`X.000 ₫` via `toLocaleString('vi-VN')`, no decimals)
+- `TopNavBar`: "Sign In" / "Sign Out" / "Book Now"
+- `LoginPage`: login + register tabs; password confirm is client-side only (never sent to server)
+- **`username` field note:** Collected at registration, required by user-service (min 3 chars). In customer app only used as fallback display in TopNavBar: `{user.full_name || user.username}`. Since `full_name` is also required, username is effectively never shown. Candidate for auto-generation from email prefix.
+
+**restaurant-app-admin (admin):**
+- All 9 pages + components translated: Login, Sidebar, HeaderDashboard, AnalyticsOverview, MenuManagement, TableManagement, UserManagement, MonthlyScheduler, OrdersManagement
+- Month labels use `'en-US'` locale (January…December). Weekday headers: Mon/Tue/Wed/Thu/Fri/Sat/Sun
+
+**restaurant-app-kitchen (kitchen display):**
+- All 5 files translated: App.tsx, LoginPage, KitchenPage, WaiterPage, SchedulePage
+- Item action buttons: "Start Cooking" / "Done ✓" (CHEF), "Served ✓" (WAITER)
+- Notification sidebar: "Notifications" / "Clear" / "No notifications"
+- Time locale in WaiterPage notification timestamps: `'en-US'`
 
 ### User Service + auth-service integration (2026-06-09)
 - **`proto/user/user.proto`**: 10 RPCs — added `VerifyCredentials(email, password)` returning `{success, message, user_id, email, roles[]}`. Roles use `user_roles` junction table.
@@ -646,20 +710,68 @@ Binaries are compiled locally and volume-mounted as `./server` inside each Alpin
 - **`services/schedule-service/`**: New microservice (port 50052). Clean Architecture. `shifts` DB table. `ListShifts` filters by `month/user_id/role`. Validation: date format, EndTime > StartTime, role in allowed set.
 - **`api-gateway`**: `schedule_client.go` + `schedule_handler.go` (5 routes under `/schedule/shifts`). Auth required on all endpoints. POST: self-register any staff; assign others → ADMIN/MANAGER only. GET/PUT/DELETE: owner or ADMIN/MANAGER.
 - **Admin app**: `MonthlyScheduler.tsx` — monthly calendar grid (replaced `StaffManagement.tsx` + `WeeklyScheduler.tsx`). Color-coded chips by role. Create/delete shifts. Loads staff names from `/users?page_size=200`.
-- **Kitchen app**: `SchedulePage.tsx` — self-service shift registration/deletion. `scheduleApi` added to `gateway.api.ts`. App.tsx adds 📅 Lịch tab to floating switcher for all roles.
+- **Kitchen app**: `SchedulePage.tsx` — self-service shift registration/deletion. `scheduleApi` added to `gateway.api.ts`. App.tsx adds 📅 Schedule tab to floating switcher for all roles.
 - **`docker-compose.yml`**: staff-service block → schedule-service. api-gateway env `SCHEDULE_SERVICE_*`.
 
 ### Admin dashboard update (2026-06-10)
 - **`HeaderDashboard.tsx`**: Rewritten — accepts `year/month/onChange` props; functional year navigation; click month = apply immediately; future months disabled.
 - **`AnalyticsOverview.tsx`**: Real month filtering — loads 500 orders once, filters client-side by selected month. 4 KPIs (revenue, orders, avg/order, covers) with trend % vs previous month. Order status breakdown row (Pending/Confirmed/Completed/Cancelled). Top 5 dishes ranked by revenue in selected month. Currency changed to VNĐ.
-- **`OrdersManagement.tsx`**: Full update — table row shows `end_time`, table name (`Bàn X` resolved from `tablesApi`), notes (italic gold). Drawer shows notes banner, full `table_id`, item_status badges (Chờ/Đang nấu/Xong/Đã mang), status action buttons (Xác nhận/Hoàn thành/Hủy) via `PATCH /orders/{id}/status`. Edit booking modal adds `end_time` and `notes` fields. Edit items modal replaces hardcoded text input with real menu search dropdown.
+- **`OrdersManagement.tsx`**: Full update — table row shows `end_time`, table name (`Table X` resolved from `tablesApi`), notes (italic gold). Drawer shows notes banner, full `table_id`, item_status badges (Pending/Cooking/Done/Served), status action buttons (Confirm/Complete/Cancel Order) via `PATCH /orders/{id}/status`. Edit booking modal adds `end_time` and `notes` fields. Edit items modal replaces hardcoded text input with real menu search dropdown.
 - **`MenuManagement.tsx`**: Fixed duplicate `mapMenuItem` bug. Category input changed to `<select>` dropdown from `menuApi.listCategories`. Payload now sends correct `category_id` (UUID), not category name.
 - **`services/api.ts`**: Added `item_status` to `OrderItemDto`; added `table_id`, `user_id`, `notes`, `end_time`, `total` to `OrderDto`; added `tablesApi`; updated `ordersApi.update` to accept `notes`/`end_time` (removed `status` — use `updateStatus` instead); added `ordersApi.updateItemStatus`.
 
+### Frontend API alignment + new admin pages (2026-06-11)
+
+**Bug fixes:**
+- **`MenuPage.tsx` (customer)**: Replaced hardcoded static `MENU_DATA` array with real API calls — `GET /menu/categories` (dynamic tabs) + `GET /menu/items?page_size=100` (filtered client-side by `category_id`).
+- **`MyOrdersPage.tsx` (customer)**: Added `tableApi.list()` call on mount to build `Map<table_id, table_number>`; now shows "Table X" instead of UUID slice.
+- **Token refresh interceptor (all 3 apps)**: `gateway.api.ts` / `services/api.ts` now detect HTTP 401, call `POST /auth/refresh` (deduplicating concurrent calls), retry original request. On refresh failure, `clearAuth()` is called. Pattern: module-level `let refreshing: Promise<string|null>|null` prevents parallel refresh storms.
+- **`order-service` `UpdateOrder` preserve `item_status`**: `resolveItems` previously reset all items to PENDING. Fixed in `usecase/order_usecase.go` — after resolving new items, a `existingStatus` map is built from the current order; matching `item_id`s restore their COOKING/READY/SERVED status. New items default to PENDING.
+- **`MonthlyScheduler.tsx` (admin)**: Added Edit shift — detail popover gains "Edit Shift" button → edit modal with date/start_time/end_time/notes → `PUT /schedule/shifts/{id}`.
+
+**New admin pages (all backed by existing api-gateway endpoints):**
+- **`TableManagement.tsx`**: Full CRUD for tables — grid card layout sorted by `table_number`. Create (`POST /tables`), edit (`PUT /tables/{id}`), delete (`DELETE /tables/{id}`), status update (`PATCH /tables/{id}/status`) with AVAILABLE/CLEANING/OUT_OF_SERVICE radio picker.
+- **`UserManagement.tsx`**: Full user management — searchable table. Create (`POST /users`), edit (`PUT /users/{id}`), delete (`DELETE /users/{id}`), role assignment (`PATCH /users/{id}/roles` — checkbox for all 5 roles), change password (`PATCH /users/{id}/password` — requires old + new password).
+- **`App.tsx` + `Sidebar.tsx` (admin)**: Added "Tables" and "Users" tabs to sidebar nav.
+
+**New API functions added (no backend change needed):**
+- `restaurant-app/gateway.api.ts`: `menuApi.listCategories()`, `tableApi.list()`, `authApi.changePassword()`
+- `restaurant-app-admin/services/api.ts`: `authApi.changePassword`, `usersApi.create/update/delete/assignRole/changePassword`, `menuApi.createCategory/updateCategory/deleteCategory`, `tablesApi.create/update/delete/updateStatus`, `scheduleApi.update` (was already defined, now used)
+- `restaurant-app-kitchen/gateway.api.ts`: token refresh interceptor added (no new endpoints)
+
+### API audit + DeleteOrder fix (2026-06-11)
+- **`services/order-service/internal/usecase/order_usecase.go`**: Added `DeleteOrder` usecase method — it was missing entirely (only the repository had `Delete`).
+- **`services/order-service/internal/delivery/grpc/order_handler.go`**: Uncommented `DeleteOrder` gRPC handler — was commented out, causing HTTP `DELETE /orders/{id}` to return gRPC "Unimplemented" error.
+- **Full API audit** (see below for complete RPC/HTTP inventory per service).
+
+### Cleanup + infra fixes (2026-06-11)
+- **`services/staff-service/`** deleted — fully replaced by `schedule-service`; no active references remained.
+- **`proto/staff/`** deleted — generated `.pb.go` files removed alongside source `.proto`.
+- **`docker-compose.yml`** fixes:
+  - Added `AUTH_SERVICE_PORT=50051` to api-gateway env (was missing; worked by default, now explicit).
+  - Added `menu-service` to `order-service` `depends_on` (order calls menu-service for item validation).
+  - Added `schedule-service` to `api-gateway` `depends_on` (gateway connects to schedule-service).
+- **`services/table-service/pkg/config/config.go`** rewritten — removed viper dependency that silently returned empty config when no YAML file present (every Docker deploy). Replaced with direct `os.Getenv` pattern consistent with all other services. `go mod tidy` removed orphaned viper dependency.
+- **`scripts/Makefile`** updated — removed `staff-service`, added all 8 active services with individual `build-*` and `restart-*` targets.
+- **`scripts/README.md`** updated — rewrote to reflect actual proto layout and Makefile-based workflow.
+
 ### Known gaps / TODO
-- Operating hours (10:00–22:00) enforced only in frontend — no backend validation in order-service
-- No role-based middleware for menu/schedule/table/user routes in api-gateway — only order endpoints have auth
-- `table_id` trong notification/kitchen app hiển thị dạng UUID cắt ngắn — chưa resolve `table_number` từ table-service
-- Kitchen app không có auto-reconnect khi WebSocket mất kết nối
-- schedule-service không validate trùng ca (cùng user, cùng ngày, cùng giờ)
-- AnalyticsOverview load max 500 orders — nếu hệ thống có >500 orders thì thống kê theo tháng sẽ thiếu
+
+**Backend:**
+- **report-service** not wired into docker-compose or api-gateway (7 RPCs implemented, 0 HTTP routes)
+- **`report-service/pkg/config/config.go`** has `UserServiceAddr` defaulting to wrong port (50052 instead of 50056)
+- **No auth middleware** on menu/table/user routes in api-gateway — only order and schedule endpoints have auth
+- **schedule-service** does not validate shift conflicts (same user, same day, overlapping time)
+- **Operating hours** (10:00–22:00) only enforced at frontend — no backend validation
+
+**Frontend:**
+- **`table_id` in kitchen app** (KitchenPage/WaiterPage notification cards) still shows truncated UUID — needs `table_number` lookup from table-service (customer app MyOrdersPage already fixed this pattern)
+- **Kitchen app WebSocket** has no auto-reconnect on disconnect; no polling fallback
+- **AnalyticsOverview** loads max 500 orders — monthly stats incomplete if >500 orders exist
+- **Category management UI** not in admin dashboard (API client has `createCategory/updateCategory/deleteCategory` but no dedicated page yet)
+
+**Validation gaps (audited 2026-06-11):**
+- **Email:** Frontend relies on `type="email"` browser validation. Backend `isValidEmail()` only checks `strings.Contains(email, "@") && strings.Contains(email, ".")` — no proper RFC check
+- **Phone:** No validation anywhere — frontend uses `type="tel"` (no format check), backend only does `strings.TrimSpace()`
+- **Password:** Frontend enforces `length >= 8`. Backend only checks `!= ""` — a 1-char password bypasses if sent directly to API
+- **Username:** Required by user-service (min 3 chars), but in customer app only used as fallback display name if `full_name` is empty (since `full_name` is also required, username is never shown). Candidate for auto-generation from email prefix to reduce registration friction
