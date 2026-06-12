@@ -169,7 +169,7 @@ func (h *OrderHandler) ListOrders(ctx context.Context, req *order.ListOrdersRequ
 		pageSize = 20
 	}
 
-	orders, total, err := h.orderUseCase.ListOrders(ctx, page, pageSize, domain.OrderStatus(req.Status), req.Keyword, req.UserId)
+	orders, total, err := h.orderUseCase.ListOrders(ctx, page, pageSize, domain.OrderStatus(req.Status), req.Keyword, req.UserId, req.SortOrder)
 	if err != nil {
 		logger.Error("Failed to list orders", zap.Error(err))
 		return &order.ListOrdersResponse{Success: false, Message: err.Error()}, nil

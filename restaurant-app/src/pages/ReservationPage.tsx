@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { menuApi, tableApi, ordersApi, type MenuItemDto } from '../api/gateway.api';
 import { useAuthStore } from '../store/authStore';
+import Toast from '../components/ui/Toast';
 
 interface ReservationPageProps {
   onNeedLogin?: () => void;
@@ -68,6 +69,9 @@ const getMenuItemImage = (item: MenuItemDto) => {
   return image.startsWith('/') ? image : `/${image}`;
 };
 
+const MIN_TIME = '10:00';
+const MAX_TIME = '22:00';
+
 const addHours = (timeStr: string, hours: number): string => {
   const [h, m] = timeStr.split(':').map(Number);
   const totalMin = h * 60 + m + hours * 60;
@@ -98,12 +102,15 @@ const ReservationPage: React.FC<ReservationPageProps> = ({ onNeedLogin }) => {
   const [dishes, setDishes] = useState<Dish[]>(mockDishes);
   const [menuError, setMenuError] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
-  const [submitError, setSubmitError] = useState<string>('');
+  const [toastMessage, setToastMessage] = useState<string>('');
   const [confirmedOrderId, setConfirmedOrderId] = useState<string>('');
   const [confirmedTableNumber, setConfirmedTableNumber] = useState<number | null>(null);
 
   // Thông tin đặt bàn cơ bản
-  const [bookingDate, setBookingDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [bookingDate, setBookingDate] = useState<string>(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  });
   const [guestCount, setGuestCount] = useState<string>('2 Guests');
   const [selectedTime, setSelectedTime] = useState<string>('19:00');
   const [selectedEndTime, setSelectedEndTime] = useState<string>(() => addHours('19:00', 2));
@@ -193,7 +200,8 @@ const ReservationPage: React.FC<ReservationPageProps> = ({ onNeedLogin }) => {
 
   // Khi user đổi giờ bắt đầu → tự động reset giờ kết thúc về start+2h
   useEffect(() => {
-    setSelectedEndTime(addHours(selectedTime, 2));
+    const proposed = addHours(selectedTime, 2);
+    setSelectedEndTime(proposed > MAX_TIME ? MAX_TIME : proposed);
   }, [selectedTime]);
 
   const handleProceedToPayment = () => {
@@ -201,15 +209,29 @@ const ReservationPage: React.FC<ReservationPageProps> = ({ onNeedLogin }) => {
   };
 
   const submitOrder = async () => {
-    setSubmitError('');
+    setToastMessage('');
 
     if (!customerName.trim() || !phoneNumber.trim()) {
-      setSubmitError('Please enter your name and phone number before completing.');
+      setToastMessage('Please enter your name and phone number before completing.');
       return;
     }
 
+    if (selectedTime < MIN_TIME || selectedTime > MAX_TIME) {
+      setToastMessage('Start time must be between 10:00 and 22:00.');
+      return;
+    }
+    if (selectedEndTime > MAX_TIME) {
+      setToastMessage('End time must be 22:00 or earlier.');
+      return;
+    }
     if (selectedEndTime <= selectedTime) {
-      setSubmitError('End time must be after start time.');
+      setToastMessage('End time must be after start time.');
+      return;
+    }
+    const bookingDateTime = new Date(`${bookingDate}T${selectedTime}:00`);
+    const minAllowed = new Date(Date.now() + 30 * 60 * 1000);
+    if (bookingDateTime <= minAllowed) {
+      setToastMessage('Booking time must be at least 30 minutes from now.');
       return;
     }
 
@@ -239,7 +261,7 @@ const ReservationPage: React.FC<ReservationPageProps> = ({ onNeedLogin }) => {
 
       goToStep(3);
     } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : 'Unable to submit reservation to server.');
+      setToastMessage(error instanceof Error ? error.message : 'Unable to submit reservation to server.');
     } finally {
       setIsSubmitting(false);
     }
@@ -414,6 +436,8 @@ const ReservationPage: React.FC<ReservationPageProps> = ({ onNeedLogin }) => {
 
   return (
     <div className="bg-background text-on-surface font-body-md overflow-x-hidden min-h-screen flex flex-col">
+      {toastMessage && <Toast message={toastMessage} onClose={() => setToastMessage('')} />}
+
       {/* Canvas phục vụ hiệu ứng Confetti */}
       {step === 3 && (
         <canvas
@@ -518,42 +542,69 @@ const ReservationPage: React.FC<ReservationPageProps> = ({ onNeedLogin }) => {
                       </select>
                     </div>
                     {/* Start time */}
-                    <div className="space-y-2">
-                      <label className="text-label-sm font-label-sm text-on-surface-variant block uppercase">
-                        Start Time
-                      </label>
-                      <input
-                        className="w-full bg-surface border border-outline-variant rounded-lg px-4 py-3 focus:border-primary focus:ring-1 focus:ring-primary/10 transition-all outline-none"
-                        type="time"
-                        value={selectedTime}
-                        min="10:00"
-                        max="22:00"
-                        onChange={(e) => setSelectedTime(e.target.value)}
-                      />
-                      <p className="text-xs text-on-surface-variant">Restaurant open 10:00 – 22:00</p>
-                    </div>
+                    {(() => {
+                      const bookingDt = new Date(`${bookingDate}T${selectedTime}:00`);
+                      const tooSoon = bookingDt <= new Date(Date.now() + 30 * 60 * 1000);
+                      const err = selectedTime < MIN_TIME || selectedTime > MAX_TIME
+                        ? 'Opening hours: 10:00 – 22:00'
+                        : tooSoon
+                        ? 'Must be at least 30 minutes from now'
+                        : null;
+                      return (
+                        <div className="space-y-2">
+                          <label className="text-label-sm font-label-sm text-on-surface-variant block uppercase">
+                            Start Time
+                          </label>
+                          <input
+                            className={`w-full bg-surface border rounded-lg px-4 py-3 focus:ring-1 transition-all outline-none ${
+                              err
+                                ? 'border-error focus:border-error focus:ring-error/10'
+                                : 'border-outline-variant focus:border-primary focus:ring-primary/10'
+                            }`}
+                            type="time"
+                            value={selectedTime}
+                            min={MIN_TIME}
+                            max={MAX_TIME}
+                            onChange={(e) => setSelectedTime(e.target.value)}
+                          />
+                          {err
+                            ? <p className="text-xs text-error">{err}</p>
+                            : <p className="text-xs text-on-surface-variant">Restaurant open 10:00 – 22:00</p>
+                          }
+                        </div>
+                      );
+                    })()}
                     {/* End time */}
-                    <div className="space-y-2">
-                      <label className="text-label-sm font-label-sm text-on-surface-variant block uppercase">
-                        End Time
-                      </label>
-                      <input
-                        className={`w-full bg-surface border rounded-lg px-4 py-3 focus:ring-1 transition-all outline-none ${
-                          selectedEndTime <= selectedTime
-                            ? 'border-error focus:border-error focus:ring-error/10'
-                            : 'border-outline-variant focus:border-primary focus:ring-primary/10'
-                        }`}
-                        type="time"
-                        value={selectedEndTime}
-                        min={selectedTime}
-                        max="22:00"
-                        onChange={(e) => setSelectedEndTime(e.target.value)}
-                      />
-                      {selectedEndTime <= selectedTime
-                        ? <p className="text-xs text-error">Must be after start time</p>
-                        : <p className="text-xs text-on-surface-variant">Default +2h, adjust if needed</p>
-                      }
-                    </div>
+                    {(() => {
+                      const err = selectedEndTime > MAX_TIME
+                        ? 'Must be 22:00 or earlier'
+                        : selectedEndTime <= selectedTime
+                        ? 'Must be after start time'
+                        : null;
+                      return (
+                        <div className="space-y-2">
+                          <label className="text-label-sm font-label-sm text-on-surface-variant block uppercase">
+                            End Time
+                          </label>
+                          <input
+                            className={`w-full bg-surface border rounded-lg px-4 py-3 focus:ring-1 transition-all outline-none ${
+                              err
+                                ? 'border-error focus:border-error focus:ring-error/10'
+                                : 'border-outline-variant focus:border-primary focus:ring-primary/10'
+                            }`}
+                            type="time"
+                            value={selectedEndTime}
+                            min={selectedTime}
+                            max={MAX_TIME}
+                            onChange={(e) => setSelectedEndTime(e.target.value)}
+                          />
+                          {err
+                            ? <p className="text-xs text-error">{err}</p>
+                            : <p className="text-xs text-on-surface-variant">Default +2h, adjust if needed</p>
+                          }
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   {/* Pre-order Selection Feature */}
@@ -673,7 +724,7 @@ const ReservationPage: React.FC<ReservationPageProps> = ({ onNeedLogin }) => {
                       {isSubmitting ? 'Sending...' : 'Complete Payment'}
                     </button>
                   </div>
-                  {submitError && <p className="mt-4 text-right text-sm text-error">{submitError}</p>}
+
                 </div>
               )}
 

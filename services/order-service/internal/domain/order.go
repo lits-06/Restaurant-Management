@@ -51,8 +51,16 @@ func (o *Order) Validate() error {
 	if o.Time.IsZero() {
 		return ErrOrderTimeRequired
 	}
-	if !o.EndTime.IsZero() && !o.EndTime.After(o.Time) {
-		return ErrOrderEndTimeInvalid
+	if !withinOperatingHours(o.Time) {
+		return ErrOrderTimeOutsideHours
+	}
+	if !o.EndTime.IsZero() {
+		if !o.EndTime.After(o.Time) {
+			return ErrOrderEndTimeInvalid
+		}
+		if !withinOperatingHours(o.EndTime) {
+			return ErrOrderEndTimeOutsideHours
+		}
 	}
 	if o.PartySize <= 0 {
 		return ErrOrderPartySizeInvalid
@@ -179,11 +187,26 @@ func NewOrder(tableID, userID, name, phone, notes, timeValue, endTimeValue, date
 	return order, nil
 }
 
+var vietnamTZ = time.FixedZone("Asia/Ho_Chi_Minh", 7*60*60)
+
+const (
+	openingHour = 10 // 10:00 VN
+	closingHour = 22 // 22:00 VN
+)
+
+// withinOperatingHours reports whether t falls within [10:00, 22:00] Vietnam time.
+func withinOperatingHours(t time.Time) bool {
+	local := t.In(vietnamTZ)
+	totalMin := local.Hour()*60 + local.Minute()
+	return totalMin >= openingHour*60 && totalMin <= closingHour*60
+}
+
 func ParseReservationTime(dateStr, timeStr string) (time.Time, error) {
-	return time.Parse(
-		"2006-01-02 15:04",
-		dateStr+" "+timeStr,
-	)
+	t, err := time.ParseInLocation("2006-01-02 15:04", dateStr+" "+timeStr, vietnamTZ)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return t.UTC(), nil
 }
 
 func (o *Order) TotalPrice() float64 {

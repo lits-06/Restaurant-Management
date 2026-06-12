@@ -26,10 +26,11 @@ export default function WaiterPage({ onLogout }: Props) {
 
   useEffect(() => { fetchOrders() }, [fetchOrders])
 
-  // When ITEM_READY arrives, refresh orders to get updated statuses
+  // When ITEM_READY or ORDER_COMPLETED arrives, refresh orders to get updated statuses
   useEffect(() => {
     if (notifications.length === 0) return
-    if (notifications[0].type === 'ITEM_READY') fetchOrders()
+    const type = notifications[0].type
+    if (type === 'ITEM_READY' || type === 'ORDER_COMPLETED') fetchOrders()
   }, [notifications, fetchOrders])
 
   const markServed = async (orderId: string, itemId: string) => {
@@ -174,8 +175,11 @@ function NotificationItem({ notif }: { notif: KitchenNotification }) {
     ? new Date(notif.created_at * 1000).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
     : ''
 
+  const isComplete = notif.type === 'ORDER_COMPLETED'
+
   return (
-    <div className="bg-gray-700 rounded-lg px-3 py-2.5 border-l-4 border-green-500">
+    <div className={`bg-gray-700 rounded-lg px-3 py-2.5 border-l-4 ${isComplete ? 'border-blue-400' : 'border-green-500'}`}>
+      {isComplete && <p className="text-xs text-blue-400 font-semibold mb-0.5">🧹 Clean Table</p>}
       <p className="text-sm text-white font-medium leading-snug">{notif.message || notif.item_name}</p>
       {notif.table_id && (
         <p className="text-xs text-gray-400 mt-0.5">

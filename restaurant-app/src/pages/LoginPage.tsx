@@ -14,7 +14,6 @@ const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
   // Login state
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
-  const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState('');
 
@@ -25,7 +24,6 @@ const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
   const [regPhone, setRegPhone] = useState('');
   const [regPassword, setRegPassword] = useState('');
   const [regConfirm, setRegConfirm] = useState('');
-  const [showRegPassword, setShowRegPassword] = useState(false);
   const [regLoading, setRegLoading] = useState(false);
   const [regError, setRegError] = useState('');
   const [regSuccess, setRegSuccess] = useState('');
@@ -159,22 +157,13 @@ const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
                     <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-lg">lock</span>
                     <input
                       id="l-password"
-                      type={showLoginPassword ? 'text' : 'password'}
+                      type="password"
                       required
                       placeholder="••••••••"
                       value={loginPassword}
                       onChange={(e) => setLoginPassword(e.target.value)}
-                      className="w-full h-12 pl-10 pr-10 bg-surface border border-outline-variant rounded-lg text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all"
+                      className="w-full h-12 pl-10 pr-4 bg-surface border border-outline-variant rounded-lg text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all"
                     />
-                    <button
-                      type="button"
-                      onClick={() => setShowLoginPassword(!showLoginPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-primary transition-colors"
-                    >
-                      <span className="material-symbols-outlined text-lg">
-                        {showLoginPassword ? 'visibility_off' : 'visibility'}
-                      </span>
-                    </button>
                   </div>
                 </div>
 
@@ -274,26 +263,15 @@ const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
                     <label className="text-xs font-medium text-on-surface-variant uppercase tracking-wider" htmlFor="r-password">
                       Password
                     </label>
-                    <div className="relative">
-                      <input
-                        id="r-password"
-                        type={showRegPassword ? 'text' : 'password'}
-                        required
-                        placeholder="≥ 8 characters"
-                        value={regPassword}
-                        onChange={(e) => setRegPassword(e.target.value)}
-                        className="w-full h-11 pl-3 pr-9 bg-surface border border-outline-variant rounded-lg text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowRegPassword(!showRegPassword)}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-primary transition-colors"
-                      >
-                        <span className="material-symbols-outlined text-base">
-                          {showRegPassword ? 'visibility_off' : 'visibility'}
-                        </span>
-                      </button>
-                    </div>
+                    <input
+                      id="r-password"
+                      type="password"
+                      required
+                      placeholder="≥ 8 characters"
+                      value={regPassword}
+                      onChange={(e) => setRegPassword(e.target.value)}
+                      className="w-full h-11 px-3 bg-surface border border-outline-variant rounded-lg text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all"
+                    />
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-on-surface-variant uppercase tracking-wider" htmlFor="r-confirm">

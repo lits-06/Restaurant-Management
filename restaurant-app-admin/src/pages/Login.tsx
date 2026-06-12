@@ -7,7 +7,6 @@ interface LoginPageProps {
 }
 
 export default function LoginPage({ onSuccess }: LoginPageProps) {
-    const [showPassword, setShowPassword] = useState(false);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
@@ -90,18 +89,18 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
                             {/* Email Field */}
                             <div className="space-y-2">
                                 <label className="font-label-sm text-[12px] text-on-surface-variant block px-1" htmlFor="email">
-                                    Email Address
+                                    Email / Username
                                 </label>
                                 <div className="relative">
                                     <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-secondary text-[20px]">
-                                        mail
+                                        person
                                     </span>
                                     <input
-                                        type="email"
+                                        type="text"
                                         id="email"
                                         value={email}
                                         onChange={(e) => setEmail(e.target.value)}
-                                        placeholder="name@luxebistro.com"
+                                        placeholder="admin or name@luxebistro.com"
                                         required
                                         className="w-full h-14 pl-12 pr-4 bg-surface-container-low border border-outline-variant rounded-lg font-body-md text-on-surface placeholder:text-secondary/50 outline-none transition-all input-focus-glow"
                                     />
@@ -118,23 +117,14 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
                                         lock
                                     </span>
                                     <input
-                                        type={showPassword ? 'text' : 'password'}
+                                        type="password"
                                         id="password"
                                         value={password}
                                         onChange={(e) => setPassword(e.target.value)}
                                         placeholder="••••••••"
                                         required
-                                        className="w-full h-14 pl-12 pr-12 bg-surface-container-low border border-outline-variant rounded-lg font-body-md text-on-surface placeholder:text-secondary/50 outline-none transition-all input-focus-glow"
+                                        className="w-full h-14 pl-12 pr-4 bg-surface-container-low border border-outline-variant rounded-lg font-body-md text-on-surface placeholder:text-secondary/50 outline-none transition-all input-focus-glow"
                                     />
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowPassword(!showPassword)}
-                                        className="absolute right-4 top-1/2 -translate-y-1/2 text-secondary hover:text-primary transition-colors"
-                                    >
-                                        <span className="material-symbols-outlined text-[20px]">
-                                            {showPassword ? 'visibility_off' : 'visibility'}
-                                        </span>
-                                    </button>
                                 </div>
                             </div>
 

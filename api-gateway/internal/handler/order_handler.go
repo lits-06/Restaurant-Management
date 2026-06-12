@@ -5,11 +5,23 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"restaurant-management/api-gateway/internal/grpcclient"
 	authpb "restaurant-management/proto/auth"
 	orderpb "restaurant-management/proto/order"
 )
+
+var vietnamTZ = time.FixedZone("Asia/Ho_Chi_Minh", 7*60*60)
+
+// parseVNBookingTime parses "YYYY-MM-DD" + "HH:MM" as Vietnam local time.
+func parseVNBookingTime(dateStr, timeStr string) (time.Time, error) {
+	t, err := time.ParseInLocation("2006-01-02 15:04", dateStr+" "+timeStr, vietnamTZ)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return t, nil
+}
 
 type OrderHandler struct {
 	orderClient *grpcclient.OrderClient
@@ -38,6 +50,7 @@ type createOrderRequest struct {
 	PartySize int32              `json:"party_size"`
 	Status    string             `json:"status"`
 	Items     []orderItemRequest `json:"items"`
+	WalkIn    bool               `json:"walk_in"` // staff-only: keeps user_id empty even when authenticated
 }
 
 type updateOrderRequest struct {
@@ -72,6 +85,16 @@ type updateOrderItemStatusRequest struct {
 type callerInfo struct {
 	UserID string
 	Roles  []string
+}
+
+// orderBizError writes HTTP 400 when order-service returns {success:false, message:...}, nil.
+// Returns true if an error was written (caller should return).
+func orderBizError(w http.ResponseWriter, success bool, message string) bool {
+	if !success {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"success": false, "message": message})
+		return true
+	}
+	return false
 }
 
 func (h *OrderHandler) verifyCaller(r *http.Request) (*callerInfo, error) {
@@ -138,6 +161,28 @@ func (h *OrderHandler) checkOrderAccess(r *http.Request, orderUserID string) (in
 	return 0, nil
 }
 
+// checkOrderWriteAccess is like checkOrderAccess but for write operations.
+// Walk-in orders (user_id="") require staff to modify.
+func (h *OrderHandler) checkOrderWriteAccess(r *http.Request, orderUserID string) (int, error) {
+	caller, err := h.verifyCaller(r)
+	if err != nil {
+		return http.StatusUnauthorized, err
+	}
+	if orderUserID == "" {
+		if caller == nil || !hasStaffRole(caller.Roles) {
+			return http.StatusForbidden, fmt.Errorf("staff access required to modify walk-in orders")
+		}
+		return 0, nil
+	}
+	if caller == nil {
+		return http.StatusUnauthorized, errUnauthorized("authentication required to access this order")
+	}
+	if caller.UserID != orderUserID && !hasStaffRole(caller.Roles) {
+		return http.StatusForbidden, fmt.Errorf("access denied")
+	}
+	return 0, nil
+}
+
 func (h *OrderHandler) checkUserIDAccess(r *http.Request, targetUserID string) (int, error) {
 	caller, err := h.verifyCaller(r)
 	if err != nil {
@@ -161,15 +206,38 @@ func (h *OrderHandler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": err.Error()})
 		return
 	}
-	userID := ""
-	if caller != nil {
-		userID = caller.UserID
-	}
 	var req createOrderRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid request body"})
 		return
 	}
+
+	isStaff := caller != nil && hasStaffRole(caller.Roles)
+	if req.WalkIn && !isStaff {
+		writeJSON(w, http.StatusForbidden, map[string]any{"error": "staff access required to create walk-in orders"})
+		return
+	}
+
+	userID := ""
+	if caller != nil && !req.WalkIn {
+		userID = caller.UserID
+	}
+
+	// Non-staff callers (customers + anonymous) must book at least 30 minutes ahead.
+	if !isStaff && req.Date != "" && req.Time != "" {
+		bookingTime, err := parseVNBookingTime(req.Date, req.Time)
+		if err == nil {
+			minAllowed := time.Now().Add(30 * time.Minute)
+			if !bookingTime.After(minAllowed) {
+				writeJSON(w, http.StatusBadRequest, map[string]any{
+					"success": false,
+					"message": "Booking time must be at least 30 minutes from now",
+				})
+				return
+			}
+		}
+	}
+
 	resp, err := h.orderClient.CreateOrder(r.Context(), &orderpb.CreateOrderRequest{
 		TableId:   req.TableID,
 		UserId:    userID,
@@ -187,6 +255,9 @@ func (h *OrderHandler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return
 	}
+	if orderBizError(w, resp.GetSuccess(), resp.GetMessage()) {
+		return
+	}
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -200,16 +271,31 @@ func (h *OrderHandler) ListOrders(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, status, map[string]any{"error": err.Error()})
 			return
 		}
+	} else {
+		// No user_id filter → listing all orders: staff only
+		caller, err := h.verifyCaller(r)
+		if err != nil {
+			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": err.Error()})
+			return
+		}
+		if caller == nil || !hasStaffRole(caller.Roles) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "staff access required to list all orders"})
+			return
+		}
 	}
 	resp, err := h.orderClient.ListOrders(r.Context(), &orderpb.ListOrdersRequest{
-		Page:     parseInt32Query(r, "page", 1),
-		PageSize: parseInt32Query(r, "page_size", 20),
-		Status:   strings.TrimSpace(r.URL.Query().Get("status")),
-		Keyword:  strings.TrimSpace(r.URL.Query().Get("keyword")),
-		UserId:   userID,
+		Page:      parseInt32Query(r, "page", 1),
+		PageSize:  parseInt32Query(r, "page_size", 20),
+		Status:    strings.TrimSpace(r.URL.Query().Get("status")),
+		Keyword:   strings.TrimSpace(r.URL.Query().Get("keyword")),
+		UserId:    userID,
+		SortOrder: strings.TrimSpace(r.URL.Query().Get("sort_order")),
 	})
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
+		return
+	}
+	if orderBizError(w, resp.GetSuccess(), resp.GetMessage()) {
 		return
 	}
 	writeJSON(w, http.StatusOK, resp)
@@ -227,6 +313,9 @@ func (h *OrderHandler) GetOrder(w http.ResponseWriter, r *http.Request) {
 	resp, err := h.orderClient.GetOrder(r.Context(), &orderpb.GetOrderRequest{OrderId: orderID})
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
+		return
+	}
+	if orderBizError(w, resp.GetSuccess(), resp.GetMessage()) {
 		return
 	}
 	if resp.Order != nil {
@@ -253,7 +342,7 @@ func (h *OrderHandler) UpdateOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if existing.Order != nil {
-		if status, err := h.checkOrderAccess(r, existing.Order.UserId); err != nil {
+		if status, err := h.checkOrderWriteAccess(r, existing.Order.UserId); err != nil {
 			writeJSON(w, status, map[string]any{"error": err.Error()})
 			return
 		}
@@ -280,6 +369,9 @@ func (h *OrderHandler) UpdateOrder(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return
 	}
+	if orderBizError(w, resp.GetSuccess(), resp.GetMessage()) {
+		return
+	}
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -298,7 +390,7 @@ func (h *OrderHandler) DeleteOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if existing.Order != nil {
-		if status, err := h.checkOrderAccess(r, existing.Order.UserId); err != nil {
+		if status, err := h.checkOrderWriteAccess(r, existing.Order.UserId); err != nil {
 			writeJSON(w, status, map[string]any{"error": err.Error()})
 			return
 		}
@@ -306,6 +398,9 @@ func (h *OrderHandler) DeleteOrder(w http.ResponseWriter, r *http.Request) {
 	resp, err := h.orderClient.DeleteOrder(r.Context(), &orderpb.DeleteOrderRequest{OrderId: orderID})
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
+		return
+	}
+	if orderBizError(w, resp.GetSuccess(), resp.GetMessage()) {
 		return
 	}
 	writeJSON(w, http.StatusOK, resp)
@@ -326,7 +421,7 @@ func (h *OrderHandler) CancelOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if existing.Order != nil {
-		if status, err := h.checkOrderAccess(r, existing.Order.UserId); err != nil {
+		if status, err := h.checkOrderWriteAccess(r, existing.Order.UserId); err != nil {
 			writeJSON(w, status, map[string]any{"error": err.Error()})
 			return
 		}
@@ -338,6 +433,9 @@ func (h *OrderHandler) CancelOrder(w http.ResponseWriter, r *http.Request) {
 	resp, err := h.orderClient.CancelOrder(r.Context(), &orderpb.CancelOrderRequest{OrderId: orderID, Reason: req.Reason})
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
+		return
+	}
+	if orderBizError(w, resp.GetSuccess(), resp.GetMessage()) {
 		return
 	}
 	writeJSON(w, http.StatusOK, resp)
@@ -371,6 +469,9 @@ func (h *OrderHandler) UpdateOrderStatus(w http.ResponseWriter, r *http.Request)
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return
 	}
+	if orderBizError(w, resp.GetSuccess(), resp.GetMessage()) {
+		return
+	}
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -389,7 +490,7 @@ func (h *OrderHandler) AddOrderItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if existing.Order != nil {
-		if status, err := h.checkOrderAccess(r, existing.Order.UserId); err != nil {
+		if status, err := h.checkOrderWriteAccess(r, existing.Order.UserId); err != nil {
 			writeJSON(w, status, map[string]any{"error": err.Error()})
 			return
 		}
@@ -405,6 +506,9 @@ func (h *OrderHandler) AddOrderItem(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
+		return
+	}
+	if orderBizError(w, resp.GetSuccess(), resp.GetMessage()) {
 		return
 	}
 	writeJSON(w, http.StatusOK, resp)
@@ -425,7 +529,7 @@ func (h *OrderHandler) RemoveOrderItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if existing.Order != nil {
-		if status, err := h.checkOrderAccess(r, existing.Order.UserId); err != nil {
+		if status, err := h.checkOrderWriteAccess(r, existing.Order.UserId); err != nil {
 			writeJSON(w, status, map[string]any{"error": err.Error()})
 			return
 		}
@@ -433,6 +537,9 @@ func (h *OrderHandler) RemoveOrderItem(w http.ResponseWriter, r *http.Request) {
 	resp, err := h.orderClient.RemoveOrderItem(r.Context(), &orderpb.RemoveOrderItemRequest{OrderId: orderID, ItemId: itemID})
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
+		return
+	}
+	if orderBizError(w, resp.GetSuccess(), resp.GetMessage()) {
 		return
 	}
 	writeJSON(w, http.StatusOK, resp)
@@ -472,6 +579,9 @@ func (h *OrderHandler) UpdateOrderItemStatus(w http.ResponseWriter, r *http.Requ
 	})
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
+		return
+	}
+	if orderBizError(w, resp.GetSuccess(), resp.GetMessage()) {
 		return
 	}
 	writeJSON(w, http.StatusOK, resp)

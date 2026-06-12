@@ -277,13 +277,13 @@ func handleError(err error) error {
 	}
 	switch {
 	case errors.Is(err, domain.ErrUserNotFound):
-		return status.Error(codes.NotFound, "user not found")
+		return status.Error(codes.NotFound, "User not found")
 	case errors.Is(err, domain.ErrEmailAlreadyExists):
-		return status.Error(codes.AlreadyExists, "email already exists")
+		return status.Error(codes.AlreadyExists, "Email already exists")
 	case errors.Is(err, domain.ErrUsernameAlreadyExists):
-		return status.Error(codes.AlreadyExists, "username already exists")
+		return status.Error(codes.AlreadyExists, "Username already exists")
 	case errors.Is(err, domain.ErrUserAlreadyExists):
-		return status.Error(codes.AlreadyExists, "user already exists")
+		return status.Error(codes.AlreadyExists, "User already exists")
 	case errors.Is(err, domain.ErrInvalidEmail),
 		errors.Is(err, domain.ErrInvalidEmailFormat),
 		errors.Is(err, domain.ErrInvalidUsername),
@@ -294,10 +294,10 @@ func handleError(err error) error {
 		errors.Is(err, domain.ErrNoRolesAssigned):
 		return status.Error(codes.InvalidArgument, err.Error())
 	case errors.Is(err, domain.ErrInvalidCredentials):
-		return status.Error(codes.Unauthenticated, "invalid credentials")
+		return status.Error(codes.Unauthenticated, "Invalid credentials")
 	case errors.Is(err, domain.ErrAccountSuspended):
-		return status.Error(codes.PermissionDenied, "account is suspended")
+		return status.Error(codes.PermissionDenied, "Account is suspended")
 	default:
-		return status.Error(codes.Internal, "internal server error")
+		return status.Error(codes.Internal, "Internal server error")
 	}
 }

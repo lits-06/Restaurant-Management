@@ -6,9 +6,13 @@ import (
 )
 
 type Config struct {
-	ServerPort string
-	LogLevel   string
-	Database   DatabaseConfig
+	ServerPort         string
+	LogLevel           string
+	Database           DatabaseConfig
+	SeedAdminEmail     string
+	SeedAdminPassword  string
+	SeedAdminUsername  string
+	SeedAdminFullName  string
 }
 
 type DatabaseConfig struct {
@@ -32,6 +36,10 @@ func Load() (*Config, error) {
 			Name:     getEnv("DB_NAME", "restaurant_db"),
 			SSLMode:  getEnv("DB_SSLMODE", "disable"),
 		},
+		SeedAdminEmail:    getEnv("SEED_ADMIN_EMAIL", ""),
+		SeedAdminPassword: getEnv("SEED_ADMIN_PASSWORD", ""),
+		SeedAdminUsername: getEnv("SEED_ADMIN_USERNAME", "admin"),
+		SeedAdminFullName: getEnv("SEED_ADMIN_FULLNAME", "System Admin"),
 	}
 	return cfg, nil
 }

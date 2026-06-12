@@ -14,23 +14,34 @@ type Page = 'home' | 'contact' | 'reservation' | 'menu' | 'login' | 'my-orders';
 
 const PROTECTED: Page[] = ['reservation', 'my-orders'];
 
+const SESSION_KEY = 'luxe-customer-page';
+
 function App() {
   const { user, clearAuth, refreshToken } = useAuthStore();
-  const [currentPage, setCurrentPage] = useState<Page>('home');
-  // Stores where to redirect after successful login
+  const [currentPage, setCurrentPage] = useState<Page>(() => {
+    const saved = sessionStorage.getItem(SESSION_KEY) as Page | null;
+    if (saved && saved !== 'login') {
+      if (!PROTECTED.includes(saved) || !!useAuthStore.getState().user) return saved;
+    }
+    return 'home';
+  });
   const [loginRedirect, setLoginRedirect] = useState<Page>('home');
 
   const navigateTo = (page: Page) => {
     if (PROTECTED.includes(page) && !user) {
       setLoginRedirect(page);
+      sessionStorage.setItem(SESSION_KEY, 'login');
       setCurrentPage('login');
       return;
     }
+    sessionStorage.setItem(SESSION_KEY, page);
     setCurrentPage(page);
   };
 
   const handleLoginSuccess = () => {
-    setCurrentPage(loginRedirect);
+    const target = loginRedirect;
+    sessionStorage.setItem(SESSION_KEY, target);
+    setCurrentPage(target);
     setLoginRedirect('home');
   };
 
@@ -43,6 +54,7 @@ function App() {
       }
     }
     clearAuth();
+    sessionStorage.setItem(SESSION_KEY, 'home');
     setCurrentPage('home');
   };
 

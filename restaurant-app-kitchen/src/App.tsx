@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { authApi } from './api/gateway.api'
 import { getDefaultRole, useAuthStore } from './store/authStore'
 import LoginPage from './pages/LoginPage'
@@ -10,20 +10,29 @@ type ActiveView = 'CHEF' | 'WAITER' | 'SCHEDULE'
 
 export default function App() {
   const { user, refreshToken, clearAuth } = useAuthStore()
-  const [view, setView] = useState<ActiveView | null>(null)
+  const [view, setView] = useState<ActiveView | null>(() =>
+    sessionStorage.getItem('kitchen-view') as ActiveView | null
+  )
+
+  const activeView = view ?? (getDefaultRole(user?.roles ?? []) === 'WAITER' ? 'WAITER' : 'CHEF')
+
+  useEffect(() => {
+    sessionStorage.setItem('kitchen-view', activeView)
+  }, [activeView])
 
   const handleLoginSuccess = () => {
     const s = useAuthStore.getState()
     const role = s.user ? getDefaultRole(s.user.roles) : null
-    if (role === 'CHEF') setView('CHEF')
-    else if (role === 'WAITER') setView('WAITER')
-    else setView('CHEF') // ADMIN/MANAGER default to CHEF view
+    const newView: ActiveView = role === 'WAITER' ? 'WAITER' : 'CHEF'
+    sessionStorage.setItem('kitchen-view', newView)
+    setView(newView)
   }
 
   const handleLogout = async () => {
     try {
       if (refreshToken) await authApi.logout(refreshToken)
     } catch {}
+    sessionStorage.removeItem('kitchen-view')
     clearAuth()
     setView(null)
   }
@@ -36,13 +45,11 @@ export default function App() {
   const canSwitchView =
     user.roles.includes('ADMIN') || user.roles.includes('MANAGER')
 
-  const activeView = view ?? (getDefaultRole(user.roles) === 'WAITER' ? 'WAITER' : 'CHEF')
-
   return (
     <div className="relative">
       {/* Floating tab switcher — always visible for ADMIN/MANAGER; CHEF/WAITER can access Schedule */}
       <div className="fixed bottom-4 right-4 z-50 flex gap-2 bg-gray-800 rounded-full p-1 shadow-xl border border-gray-700">
-        {canSwitchView && (
+        {(canSwitchView || user.roles.includes('CHEF')) && (
           <button
             onClick={() => setView('CHEF')}
             className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${

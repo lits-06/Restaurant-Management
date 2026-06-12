@@ -43,7 +43,7 @@ func (uc *AuthUseCase) Register(ctx context.Context, email, password, username, 
 	}
 	userID, err := uc.userClient.CreateUser(ctx, email, username, fullName, phone, password)
 	if err != nil {
-		return "", fmt.Errorf("register: %w", err)
+		return "", err
 	}
 	return userID, nil
 }

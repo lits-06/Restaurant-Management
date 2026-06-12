@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"restaurant-management/api-gateway/internal/grpcclient"
-	authpb "restaurant-management/proto/auth"
 	menupb "restaurant-management/proto/menu"
 )
 
@@ -58,11 +57,9 @@ func (h *MenuHandler) CreateMenuItem(w http.ResponseWriter, r *http.Request) {
 	if !allowPost(w, r) {
 		return
 	}
-
-	// if _, err := h.verifyAuthorization(r); err != nil {
-	// 	writeJSON(w, http.StatusUnauthorized, map[string]any{"error": err.Error()})
-	// 	return
-	// }
+	if requireAdminOrManager(w, r, h.authClient) == nil {
+		return
+	}
 
 	var req createMenuItemRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -131,11 +128,9 @@ func (h *MenuHandler) UpdateMenuItem(w http.ResponseWriter, r *http.Request) {
 	if !allowPut(w, r) {
 		return
 	}
-
-	// if _, err := h.verifyAuthorization(r); err != nil {
-	// 	writeJSON(w, http.StatusUnauthorized, map[string]any{"error": err.Error()})
-	// 	return
-	// }
+	if requireAdminOrManager(w, r, h.authClient) == nil {
+		return
+	}
 
 	itemID := extractMenuItemIDFromPath(r.URL.Path)
 	if itemID == "" {
@@ -170,11 +165,9 @@ func (h *MenuHandler) DeleteMenuItem(w http.ResponseWriter, r *http.Request) {
 	if !allowDelete(w, r) {
 		return
 	}
-
-	// if _, err := h.verifyAuthorization(r); err != nil {
-	// 	writeJSON(w, http.StatusUnauthorized, map[string]any{"error": err.Error()})
-	// 	return
-	// }
+	if requireAdminOrManager(w, r, h.authClient) == nil {
+		return
+	}
 
 	itemID := extractMenuItemIDFromPath(r.URL.Path)
 	if itemID == "" {
@@ -196,11 +189,9 @@ func (h *MenuHandler) CreateCategory(w http.ResponseWriter, r *http.Request) {
 	if !allowPost(w, r) {
 		return
 	}
-
-	// if _, err := h.verifyAuthorization(r); err != nil {
-	// 	writeJSON(w, http.StatusUnauthorized, map[string]any{"error": err.Error()})
-	// 	return
-	// }
+	if requireAdminOrManager(w, r, h.authClient) == nil {
+		return
+	}
 
 	var req createCategoryRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -270,11 +261,9 @@ func (h *MenuHandler) UpdateCategory(w http.ResponseWriter, r *http.Request) {
 	if !allowPut(w, r) {
 		return
 	}
-
-	// if _, err := h.verifyAuthorization(r); err != nil {
-	// 	writeJSON(w, http.StatusUnauthorized, map[string]any{"error": err.Error()})
-	// 	return
-	// }
+	if requireAdminOrManager(w, r, h.authClient) == nil {
+		return
+	}
 
 	categoryID := extractMenuCategoryIDFromPath(r.URL.Path)
 	if categoryID == "" {
@@ -307,11 +296,9 @@ func (h *MenuHandler) DeleteCategory(w http.ResponseWriter, r *http.Request) {
 	if !allowDelete(w, r) {
 		return
 	}
-
-	// if _, err := h.verifyAuthorization(r); err != nil {
-	// 	writeJSON(w, http.StatusUnauthorized, map[string]any{"error": err.Error()})
-	// 	return
-	// }
+	if requireAdminOrManager(w, r, h.authClient) == nil {
+		return
+	}
 
 	categoryID := extractMenuCategoryIDFromPath(r.URL.Path)
 	if categoryID == "" {
@@ -326,28 +313,6 @@ func (h *MenuHandler) DeleteCategory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, resp)
-}
-
-func (h *MenuHandler) verifyAuthorization(r *http.Request) (*authpb.VerifyTokenResponse, error) {
-	authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
-	if authHeader == "" {
-		return nil, errUnauthorized("missing Authorization header")
-	}
-
-	token := extractBearerToken(authHeader)
-	if token == "" {
-		return nil, errUnauthorized("invalid Authorization header, expected Bearer token")
-	}
-
-	resp, err := h.authClient.VerifyToken(r.Context(), &authpb.VerifyTokenRequest{AccessToken: token})
-	if err != nil {
-		return nil, errUnauthorized("failed to verify access token")
-	}
-	if !resp.Valid {
-		return nil, errUnauthorized("invalid or expired access token")
-	}
-
-	return resp, nil
 }
 
 type unauthorizedError string

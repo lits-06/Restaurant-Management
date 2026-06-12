@@ -42,6 +42,9 @@ func (h *TableHandler) CreateTable(w http.ResponseWriter, r *http.Request) {
 	if !allowPost(w, r) {
 		return
 	}
+	if requireAdminOrManager(w, r, h.authClient) == nil {
+		return
+	}
 	var req createTableRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid request body"})
@@ -55,7 +58,7 @@ func (h *TableHandler) CreateTable(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusCreated, resp)
+	writeJSON(w, http.StatusCreated, map[string]any{"table": tableToJSON(resp.GetTable()), "success": resp.GetSuccess(), "message": resp.GetMessage()})
 }
 
 // ListTables handles GET /tables.
@@ -72,7 +75,16 @@ func (h *TableHandler) ListTables(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, resp)
+	tables := make([]map[string]any, 0, len(resp.GetTables()))
+	for _, t := range resp.GetTables() {
+		tables = append(tables, tableToJSON(t))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"tables":    tables,
+		"total":     resp.GetTotal(),
+		"page":      resp.GetPage(),
+		"page_size": resp.GetPageSize(),
+	})
 }
 
 // GetTable handles GET /tables/{id}.
@@ -90,12 +102,15 @@ func (h *TableHandler) GetTable(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, resp)
+	writeJSON(w, http.StatusOK, map[string]any{"table": tableToJSON(resp.GetTable())})
 }
 
 // UpdateTable handles PUT /tables/{id}.
 func (h *TableHandler) UpdateTable(w http.ResponseWriter, r *http.Request) {
 	if !allowPut(w, r) {
+		return
+	}
+	if requireAdminOrManager(w, r, h.authClient) == nil {
 		return
 	}
 	tableID := extractIDFromPath(r.URL.Path, "/tables/")
@@ -117,12 +132,15 @@ func (h *TableHandler) UpdateTable(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, resp)
+	writeJSON(w, http.StatusOK, map[string]any{"table": tableToJSON(resp.GetTable()), "success": resp.GetSuccess(), "message": resp.GetMessage()})
 }
 
 // DeleteTable handles DELETE /tables/{id}.
 func (h *TableHandler) DeleteTable(w http.ResponseWriter, r *http.Request) {
 	if !allowDelete(w, r) {
+		return
+	}
+	if requireAdminOrManager(w, r, h.authClient) == nil {
 		return
 	}
 	tableID := extractIDFromPath(r.URL.Path, "/tables/")
@@ -141,6 +159,9 @@ func (h *TableHandler) DeleteTable(w http.ResponseWriter, r *http.Request) {
 // UpdateTableStatus handles PATCH /tables/{id}/status.
 func (h *TableHandler) UpdateTableStatus(w http.ResponseWriter, r *http.Request) {
 	if !allowPatch(w, r) {
+		return
+	}
+	if requireStaff(w, r, h.authClient) == nil {
 		return
 	}
 	path := strings.TrimSuffix(r.URL.Path, "/status")
@@ -162,7 +183,7 @@ func (h *TableHandler) UpdateTableStatus(w http.ResponseWriter, r *http.Request)
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, resp)
+	writeJSON(w, http.StatusOK, map[string]any{"table": tableToJSON(resp.GetTable()), "success": resp.GetSuccess(), "message": resp.GetMessage()})
 }
 
 // GetAvailableTables handles GET /tables/available.
@@ -177,7 +198,11 @@ func (h *TableHandler) GetAvailableTables(w http.ResponseWriter, r *http.Request
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, resp)
+	tables := make([]map[string]any, 0, len(resp.GetTables()))
+	for _, t := range resp.GetTables() {
+		tables = append(tables, tableToJSON(t))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"tables": tables})
 }
 
 // --- Helpers ---
@@ -189,6 +214,31 @@ func extractIDFromPath(path, prefix string) string {
 		return ""
 	}
 	return strings.Split(trimmed, "/")[0]
+}
+
+func tableStatusToString(s tablepb.TableStatus) string {
+	switch s {
+	case tablepb.TableStatus_STATUS_AVAILABLE:
+		return "AVAILABLE"
+	case tablepb.TableStatus_STATUS_CLEANING:
+		return "CLEANING"
+	case tablepb.TableStatus_STATUS_OUT_OF_SERVICE:
+		return "OUT_OF_SERVICE"
+	default:
+		return "UNKNOWN"
+	}
+}
+
+func tableToJSON(t *tablepb.Table) map[string]any {
+	if t == nil {
+		return nil
+	}
+	return map[string]any{
+		"table_id":     t.TableId,
+		"table_number": t.TableNumber,
+		"capacity":     t.Capacity,
+		"status":       tableStatusToString(t.Status),
+	}
 }
 
 func parseTableStatus(s string) tablepb.TableStatus {

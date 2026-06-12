@@ -995,6 +995,7 @@ type ListOrdersRequest struct {
 	Status        string                 `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`
 	Keyword       string                 `protobuf:"bytes,4,opt,name=keyword,proto3" json:"keyword,omitempty"`
 	UserId        string                 `protobuf:"bytes,5,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	SortOrder     string                 `protobuf:"bytes,6,opt,name=sort_order,json=sortOrder,proto3" json:"sort_order,omitempty"` // "asc" or "desc" (default: "desc")
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1060,6 +1061,13 @@ func (x *ListOrdersRequest) GetKeyword() string {
 func (x *ListOrdersRequest) GetUserId() string {
 	if x != nil {
 		return x.UserId
+	}
+	return ""
+}
+
+func (x *ListOrdersRequest) GetSortOrder() string {
+	if x != nil {
+		return x.SortOrder
 	}
 	return ""
 }
@@ -1691,13 +1699,15 @@ const file_proto_order_order_proto_rawDesc = "" +
 	"\x06reason\x18\x02 \x01(\tR\x06reason\"I\n" +
 	"\x13CancelOrderResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage\"\x8f\x01\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\"\xae\x01\n" +
 	"\x11ListOrdersRequest\x12\x12\n" +
 	"\x04page\x18\x01 \x01(\x05R\x04page\x12\x1b\n" +
 	"\tpage_size\x18\x02 \x01(\x05R\bpageSize\x12\x16\n" +
 	"\x06status\x18\x03 \x01(\tR\x06status\x12\x18\n" +
 	"\akeyword\x18\x04 \x01(\tR\akeyword\x12\x17\n" +
-	"\auser_id\x18\x05 \x01(\tR\x06userId\"\xb5\x01\n" +
+	"\auser_id\x18\x05 \x01(\tR\x06userId\x12\x1d\n" +
+	"\n" +
+	"sort_order\x18\x06 \x01(\tR\tsortOrder\"\xb5\x01\n" +
 	"\x12ListOrdersResponse\x12$\n" +
 	"\x06orders\x18\x01 \x03(\v2\f.order.OrderR\x06orders\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x05R\x05total\x12\x12\n" +

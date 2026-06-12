@@ -19,7 +19,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 interface CreateForm {
   email: string; password: string; username: string;
-  full_name: string; phone: string;
+  full_name: string; phone: string; roles: string[];
 }
 
 interface EditForm {
@@ -27,7 +27,7 @@ interface EditForm {
 }
 
 const emptyCreate = (): CreateForm => ({
-  email: '', password: '', username: '', full_name: '', phone: '',
+  email: '', password: '', username: '', full_name: '', phone: '', roles: [],
 });
 
 const UserManagement: React.FC = () => {
@@ -35,6 +35,9 @@ const UserManagement: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
+  const [filterRole, setFilterRole] = useState<string>('');
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 10;
 
   // Create modal
   const [showCreate, setShowCreate] = useState(false);
@@ -73,8 +76,10 @@ const UserManagement: React.FC = () => {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { setPage(1); }, [search, filterRole]);
 
   const filtered = users.filter((u) => {
+    if (filterRole && !(u.roles ?? []).includes(filterRole)) return false;
     if (!search) return true;
     const q = search.toLowerCase();
     return (
@@ -83,6 +88,10 @@ const UserManagement: React.FC = () => {
       u.full_name?.toLowerCase().includes(q)
     );
   });
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const paginated = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   // ── Create ──────────────────────────────────────────────────────
   const submitCreate = async () => {
@@ -93,7 +102,7 @@ const UserManagement: React.FC = () => {
     setCreating(true);
     setCreateError('');
     try {
-      await usersApi.create(createForm);
+      await usersApi.create({ ...createForm, roles: createForm.roles.length ? createForm.roles : undefined });
       setShowCreate(false);
       setCreateForm(emptyCreate());
       load();
@@ -218,6 +227,35 @@ const UserManagement: React.FC = () => {
         </div>
       </div>
 
+      {/* Role filter */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-xs font-semibold text-[#6b7280] uppercase tracking-wider">Role:</span>
+        <button
+          onClick={() => setFilterRole('')}
+          className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${
+            filterRole === '' ? 'bg-[#191c1d] text-white border-[#191c1d]' : 'bg-white text-[#6b7280] border-[#e5e7eb] hover:border-[#d0c5af]'
+          }`}
+        >
+          All
+        </button>
+        {ALL_ROLES.map((role) => (
+          <button
+            key={role}
+            onClick={() => setFilterRole(filterRole === role ? '' : role)}
+            className={`text-xs font-bold px-3 py-1.5 rounded-full border-2 transition-colors ${
+              filterRole === role ? `${ROLE_COLORS[role]} border-current` : 'bg-white text-[#9ca3af] border-[#e5e7eb] hover:border-[#d0c5af]'
+            }`}
+          >
+            {role}
+          </button>
+        ))}
+        {filterRole && (
+          <span className="text-xs text-[#6b7280] ml-1">
+            {filtered.length} result{filtered.length !== 1 ? 's' : ''}
+          </span>
+        )}
+      </div>
+
       {error && <div className="text-red-600 text-sm bg-red-50 p-3 rounded-lg">{error}</div>}
 
       {/* User table */}
@@ -236,7 +274,7 @@ const UserManagement: React.FC = () => {
               <tr><td colSpan={4} className="text-center py-12 text-[#6b7280]">Loading...</td></tr>
             ) : filtered.length === 0 ? (
               <tr><td colSpan={4} className="text-center py-12 text-[#6b7280]">No users found</td></tr>
-            ) : filtered.map((u) => (
+            ) : paginated.map((u) => (
               <tr key={u.user_id} className="hover:bg-[#fafafa]">
                 <td className="px-4 py-3">
                   <p className="font-semibold text-[#191c1d]">{u.full_name || u.username}</p>
@@ -293,6 +331,51 @@ const UserManagement: React.FC = () => {
             ))}
           </tbody>
         </table>
+
+        {/* Pagination */}
+        <div className="flex items-center justify-between px-4 py-3 border-t border-[#e5e7eb]">
+            <p className="text-xs text-[#6b7280]">
+              {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, filtered.length)} of {filtered.length}
+            </p>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={safePage === 1}
+                className="p-1.5 rounded-lg hover:bg-[#f3f4f5] text-[#6b7280] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >
+                <span className="material-symbols-outlined text-base">chevron_left</span>
+              </button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter((p) => p === 1 || p === totalPages || Math.abs(p - safePage) <= 1)
+                .reduce<(number | '...')[]>((acc, p, idx, arr) => {
+                  if (idx > 0 && (p as number) - (arr[idx - 1] as number) > 1) acc.push('...');
+                  acc.push(p);
+                  return acc;
+                }, [])
+                .map((p, i) =>
+                  p === '...' ? (
+                    <span key={`ellipsis-${i}`} className="px-1 text-xs text-[#9ca3af]">…</span>
+                  ) : (
+                    <button
+                      key={p}
+                      onClick={() => setPage(p as number)}
+                      className={`w-7 h-7 rounded-lg text-xs font-semibold transition-colors ${
+                        safePage === p ? 'bg-[#d4af37] text-white' : 'hover:bg-[#f3f4f5] text-[#4d4635]'
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  )
+                )}
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={safePage === totalPages}
+                className="p-1.5 rounded-lg hover:bg-[#f3f4f5] text-[#6b7280] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >
+                <span className="material-symbols-outlined text-base">chevron_right</span>
+              </button>
+            </div>
+        </div>
       </div>
 
       {/* Create modal */}
@@ -322,6 +405,33 @@ const UserManagement: React.FC = () => {
                   onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })}
                   className="w-full border border-[#d0c5af] rounded-lg px-3 py-2 text-sm"
                 />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-[#6b7280] mb-2 block">Roles</label>
+                <div className="flex flex-wrap gap-2">
+                  {ALL_ROLES.map((role) => {
+                    const checked = createForm.roles.includes(role);
+                    return (
+                      <button
+                        key={role}
+                        type="button"
+                        onClick={() => setCreateForm({
+                          ...createForm,
+                          roles: checked
+                            ? createForm.roles.filter((r) => r !== role)
+                            : [...createForm.roles, role],
+                        })}
+                        className={`text-xs font-bold px-3 py-1.5 rounded-full border-2 transition-all ${
+                          checked
+                            ? `${ROLE_COLORS[role]} border-current`
+                            : 'bg-white text-[#9ca3af] border-[#e5e7eb] hover:border-[#d0c5af]'
+                        }`}
+                      >
+                        {role}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
               {createError && <p className="text-sm text-red-600">{createError}</p>}
             </div>

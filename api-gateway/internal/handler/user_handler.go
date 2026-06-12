@@ -48,6 +48,9 @@ func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	if !allowPost(w, r) {
 		return
 	}
+	if requireAdminOrManager(w, r, h.authClient) == nil {
+		return
+	}
 	var req createUserRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid request body"})
@@ -65,11 +68,14 @@ func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusCreated, resp)
+	writeJSON(w, http.StatusCreated, map[string]any{"user": userToJSON(resp.GetUser()), "success": resp.GetSuccess(), "message": resp.GetMessage()})
 }
 
 func (h *UserHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
 	if !allowGet(w, r) {
+		return
+	}
+	if requireAdminOrManager(w, r, h.authClient) == nil {
 		return
 	}
 	resp, err := h.userClient.ListUsers(r.Context(), &userpb.ListUsersRequest{
@@ -83,7 +89,11 @@ func (h *UserHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, resp)
+	users := make([]map[string]any, 0, len(resp.GetUsers()))
+	for _, u := range resp.GetUsers() {
+		users = append(users, userToJSON(u))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"users": users, "total": resp.GetTotal()})
 }
 
 func (h *UserHandler) GetUser(w http.ResponseWriter, r *http.Request) {
@@ -100,11 +110,14 @@ func (h *UserHandler) GetUser(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, resp)
+	writeJSON(w, http.StatusOK, map[string]any{"user": userToJSON(resp.GetUser())})
 }
 
 func (h *UserHandler) GetUserByEmail(w http.ResponseWriter, r *http.Request) {
 	if !allowGet(w, r) {
+		return
+	}
+	if verifyBearerToken(w, r, h.authClient) == nil {
 		return
 	}
 	email := strings.TrimSpace(r.URL.Query().Get("email"))
@@ -117,11 +130,14 @@ func (h *UserHandler) GetUserByEmail(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, resp)
+	writeJSON(w, http.StatusOK, map[string]any{"user": userToJSON(resp.GetUser())})
 }
 
 func (h *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	if !allowPut(w, r) {
+		return
+	}
+	if requireAdminOrManager(w, r, h.authClient) == nil {
 		return
 	}
 	userID := extractUserIDFromPath(r.URL.Path)
@@ -146,11 +162,14 @@ func (h *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, resp)
+	writeJSON(w, http.StatusOK, map[string]any{"user": userToJSON(resp.GetUser()), "success": resp.GetSuccess(), "message": resp.GetMessage()})
 }
 
 func (h *UserHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	if !allowDelete(w, r) {
+		return
+	}
+	if requireAdmin(w, r, h.authClient) == nil {
 		return
 	}
 	userID := extractUserIDFromPath(r.URL.Path)
@@ -168,6 +187,9 @@ func (h *UserHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 
 func (h *UserHandler) AssignRole(w http.ResponseWriter, r *http.Request) {
 	if !allowPatch(w, r) {
+		return
+	}
+	if requireAdmin(w, r, h.authClient) == nil {
 		return
 	}
 	userID := extractUserIDFromPath(r.URL.Path)
@@ -188,11 +210,14 @@ func (h *UserHandler) AssignRole(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, resp)
+	writeJSON(w, http.StatusOK, map[string]any{"success": resp.GetSuccess(), "message": resp.GetMessage()})
 }
 
 func (h *UserHandler) GetUserRoles(w http.ResponseWriter, r *http.Request) {
 	if !allowGet(w, r) {
+		return
+	}
+	if requireAdminOrManager(w, r, h.authClient) == nil {
 		return
 	}
 	userID := extractUserIDFromPath(r.URL.Path)
@@ -205,11 +230,20 @@ func (h *UserHandler) GetUserRoles(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, resp)
+	roles := make([]string, 0, len(resp.GetRoles()))
+	for _, r := range resp.GetRoles() {
+		if s := userRoleToString(r); s != "" {
+			roles = append(roles, s)
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"roles": roles})
 }
 
 func (h *UserHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	if !allowPatch(w, r) {
+		return
+	}
+	if verifyBearerToken(w, r, h.authClient) == nil {
 		return
 	}
 	userID := extractUserIDFromPath(r.URL.Path)
@@ -235,6 +269,59 @@ func (h *UserHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 }
 
 // ── helpers ───────────────────────────────────────────────────
+
+// userRoleToString converts proto UserRole enum → plain string for JSON responses.
+func userRoleToString(r userpb.UserRole) string {
+	switch r {
+	case userpb.UserRole_ROLE_ADMIN:
+		return "ADMIN"
+	case userpb.UserRole_ROLE_MANAGER:
+		return "MANAGER"
+	case userpb.UserRole_ROLE_CHEF:
+		return "CHEF"
+	case userpb.UserRole_ROLE_WAITER:
+		return "WAITER"
+	case userpb.UserRole_ROLE_USER:
+		return "USER"
+	default:
+		return ""
+	}
+}
+
+func userStatusToString(s userpb.UserStatus) string {
+	switch s {
+	case userpb.UserStatus_STATUS_ACTIVE:
+		return "ACTIVE"
+	case userpb.UserStatus_STATUS_INACTIVE:
+		return "INACTIVE"
+	case userpb.UserStatus_STATUS_SUSPENDED:
+		return "SUSPENDED"
+	default:
+		return ""
+	}
+}
+
+// userToJSON converts a proto User to a plain map so roles serialize as strings, not integers.
+func userToJSON(u *userpb.User) map[string]any {
+	if u == nil {
+		return nil
+	}
+	roles := make([]string, 0, len(u.Roles))
+	for _, r := range u.Roles {
+		if s := userRoleToString(r); s != "" {
+			roles = append(roles, s)
+		}
+	}
+	return map[string]any{
+		"user_id":   u.UserId,
+		"email":     u.Email,
+		"username":  u.Username,
+		"full_name": u.FullName,
+		"phone":     u.Phone,
+		"status":    userStatusToString(u.Status),
+		"roles":     roles,
+	}
+}
 
 func extractUserIDFromPath(path string) string {
 	trimmed := strings.Trim(strings.TrimPrefix(path, "/users/"), " /")

@@ -1,6 +1,7 @@
 import { useAdminAuthStore } from '../store/adminAuthStore';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080';
+const WS_BASE_URL  = import.meta.env.VITE_WS_BASE_URL  ?? 'ws://localhost:8080';
 
 type QueryValue = string | number | boolean | undefined | null;
 
@@ -244,8 +245,22 @@ export const tablesApi = {
 };
 
 export const ordersApi = {
-  list: (query?: { page?: number; page_size?: number; status?: string; keyword?: string; user_id?: string }) =>
+  list: (query?: { page?: number; page_size?: number; status?: string; keyword?: string; user_id?: string; sort_order?: 'asc' | 'desc' }) =>
     request<{ orders?: OrderDto[]; total?: number }>('/orders', undefined, query),
+  create: (payload: {
+    name: string;
+    phone: string;
+    party_size: number;
+    table_id?: string;
+    date: string;
+    time: string;
+    end_time?: string;
+    notes?: string;
+    status?: string;
+    items?: Array<{ item_id: string; quantity: number }>;
+    walk_in?: boolean;
+  }) =>
+    request<{ success?: boolean; message?: string; order?: OrderDto }>('/orders', { method: 'POST', body: JSON.stringify(payload) }),
   update: (orderId: string, payload: {
     name: string;
     phone: string;
@@ -277,3 +292,6 @@ export const scheduleApi = {
   delete: (shiftId: string) =>
     request<{ success?: boolean }>(`/schedule/shifts/${shiftId}`, { method: 'DELETE' }),
 };
+
+export const createNotificationWS = (token: string, role: string): WebSocket =>
+  new WebSocket(`${WS_BASE_URL}/ws/notifications?token=${encodeURIComponent(token)}&role=${role}`);

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { menuApi, ordersApi, tablesApi, type MenuItemDto, type OrderDto, type OrderItemDto, type TableDto } from '../services/api';
+import { menuApi, ordersApi, tablesApi, type MenuItemDto, type CategoryDto, type OrderDto, type OrderItemDto, type TableDto } from '../services/api';
 
 // ── types ──────────────────────────────────────────────────────────────────────
 
@@ -31,6 +31,58 @@ interface Reservation {
 
 const STATUS_OPTIONS = ['Confirmed', 'Pending', 'Completed', 'Cancelled'] as const;
 
+type ViewMode = 'upcoming' | 'today' | 'week' | 'month' | 'all';
+
+const VIEW_TABS: { key: ViewMode; label: string }[] = [
+  { key: 'upcoming', label: 'Upcoming' },
+  { key: 'today',    label: 'Today' },
+  { key: 'week',     label: 'This Week' },
+  { key: 'month',    label: 'This Month' },
+  { key: 'all',      label: 'All' },
+];
+
+interface WalkInState {
+  name: string;
+  phone: string;
+  partySize: number;
+  tableId: string;
+  date: string;
+  time: string;
+  endTime: string;
+  notes: string;
+  status: string;
+  items: OrderItem[];
+  search: string;
+}
+
+const nowHHMM = () => {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+};
+
+const addHoursToTime = (hhmm: string, h: number): string => {
+  const [hh, mm] = hhmm.split(':').map(Number);
+  const total = hh * 60 + mm + h * 60;
+  return `${String(Math.floor(total / 60) % 24).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+};
+
+const getMonWeekBounds = (d: Date): { start: string; end: string } => {
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  const mon = new Date(d); mon.setDate(d.getDate() + diff);
+  const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+  return { start: fmtDate(mon), end: fmtDate(sun) };
+};
+
+const defaultWalkIn = (): WalkInState => {
+  const t = nowHHMM();
+  return {
+    name: '', phone: '', partySize: 2, tableId: '',
+    date: fmtDate(new Date()), time: t, endTime: addHoursToTime(t, 2),
+    notes: '', status: 'Confirmed', items: [], search: '',
+  };
+};
+
 const getOrderId     = (o: OrderDto)     => o.order_id ?? o.orderId ?? '';
 const getOrderItemId = (i: OrderItemDto) => i.item_id  ?? i.itemId  ?? '';
 
@@ -41,8 +93,14 @@ const parseTs = (v: OrderDto['time']): Date | null => {
   return null;
 };
 
-const fmtTime     = (d: Date | null) => d ? d.toTimeString().slice(0, 5) : '';
-const fmtDate     = (d: Date | null) => d ? d.toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
+const fmtTime = (d: Date | null) => d ? d.toTimeString().slice(0, 5) : '';
+const fmtDate = (d: Date | null) => {
+  const target = d ?? new Date();
+  const y = target.getFullYear();
+  const m = String(target.getMonth() + 1).padStart(2, '0');
+  const day = String(target.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
 const fmtVnd      = (n: number)      => `${Math.round(n).toLocaleString('vi-VN')}đ`;
 const shortId     = (id: string)     => id.slice(0, 8);
 
@@ -91,35 +149,134 @@ const mapOrderToReservation = (o: OrderDto): Reservation => {
   };
 };
 
+// ── MenuBrowser ────────────────────────────────────────────────────────────────
+
+interface MenuBrowserProps {
+  menuItems: MenuItemDto[];
+  categories: CategoryDto[];
+  currentItems: OrderItem[];
+  search: string;
+  catFilter: string;
+  onSearchChange: (s: string) => void;
+  onCatChange: (id: string) => void;
+  onAdd: (item: MenuItemDto) => void;
+  onQtyChange: (itemId: string, delta: number) => void;
+}
+
+const MenuBrowser: React.FC<MenuBrowserProps> = ({
+  menuItems, categories, currentItems, search, catFilter,
+  onSearchChange, onCatChange, onAdd, onQtyChange,
+}) => {
+  const itemId = (m: MenuItemDto) => m.item_id ?? m.itemId ?? '';
+
+  const visible = useMemo(() => menuItems.filter(m => {
+    if (catFilter && (m.category ?? '') !== catFilter) return false;
+    if (search && !(m.name ?? '').toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  }), [menuItems, catFilter, search]);
+
+  const qtyOf = (m: MenuItemDto) => currentItems.find(i => i.id === itemId(m))?.quantity ?? 0;
+
+  return (
+    <div>
+      <input
+        type="text"
+        className="w-full px-3 py-2 bg-white border border-outline-variant/30 rounded-lg text-xs mb-2 focus:ring-2 focus:ring-[#d4af37] outline-none"
+        placeholder="Search menu items..."
+        value={search}
+        onChange={e => onSearchChange(e.target.value)}
+      />
+
+      {/* Category pills */}
+      <div className="flex gap-1 flex-wrap mb-3">
+        <button
+          type="button"
+          onClick={() => onCatChange('')}
+          className={`px-2.5 py-1 rounded-full text-[10px] font-semibold transition-all ${!catFilter ? 'bg-[#735c00] text-white' : 'bg-[#f3f4f5] text-[#4d4635] hover:bg-[#e1e3e4]'}`}
+        >All</button>
+        {categories.map(cat => {
+          const name = cat.name ?? '';
+          return (
+            <button
+              key={name} type="button"
+              onClick={() => onCatChange(catFilter === name ? '' : name)}
+              className={`px-2.5 py-1 rounded-full text-[10px] font-semibold transition-all ${catFilter === name ? 'bg-[#735c00] text-white' : 'bg-[#f3f4f5] text-[#4d4635] hover:bg-[#e1e3e4]'}`}
+            >{cat.name}</button>
+          );
+        })}
+      </div>
+
+      {/* Item grid — scrollable */}
+      <div className="grid grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1">
+        {visible.length === 0 ? (
+          <p className="col-span-2 text-center text-xs text-gray-400 py-6 italic">No items found.</p>
+        ) : visible.map(item => {
+          const id  = itemId(item);
+          const qty = qtyOf(item);
+          return (
+            <div key={id}
+              className="flex flex-col justify-between p-2.5 border border-gray-200 rounded-lg bg-white hover:border-[#d4af37] transition-colors"
+            >
+              <div className="mb-2">
+                <p className="text-xs font-semibold text-on-surface leading-snug line-clamp-2">{item.name}</p>
+                <p className="text-[11px] text-[#735c00] font-semibold mt-0.5">{fmtVnd(item.price ?? 0)}</p>
+              </div>
+              {qty === 0 ? (
+                <button type="button"
+                  className="w-full py-1 bg-[#f8f9fa] hover:bg-[#ffe088]/40 border border-outline-variant/30 rounded text-xs font-bold text-[#735c00] transition-colors"
+                  onClick={() => onAdd(item)}
+                >+ Add</button>
+              ) : (
+                <div className="flex items-center border border-[#d4af37] rounded overflow-hidden">
+                  <button type="button" className="px-2.5 py-1 hover:bg-gray-100 text-sm font-bold leading-none" onClick={() => onQtyChange(id, -1)}>−</button>
+                  <span className="flex-1 text-center text-xs font-mono font-bold text-[#735c00]">{qty}</span>
+                  <button type="button" className="px-2.5 py-1 hover:bg-gray-100 text-sm font-bold leading-none" onClick={() => onQtyChange(id, 1)}>+</button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 // ── component ──────────────────────────────────────────────────────────────────
 
-const OrdersManagement: React.FC = () => {
+const OrdersManagement: React.FC<{ refreshSignal?: number }> = ({ refreshSignal }) => {
   // ── data state ────────────────────────────────────────────────────────────────
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [menuItems, setMenuItems]       = useState<MenuItemDto[]>([]);
+  const [categories, setCategories]     = useState<CategoryDto[]>([]);
   const [tables, setTables]             = useState<TableDto[]>([]);
   const [loading, setLoading]           = useState(true);
   const [error, setError]               = useState('');
 
   // ── filter/pagination ─────────────────────────────────────────────────────────
+  const [viewMode, setViewMode]         = useState<ViewMode>('upcoming');
   const [searchQuery, setSearchQuery]   = useState('');
   const [statusFilter, setStatusFilter] = useState('All Statuses');
   const [currentPage, setCurrentPage]   = useState(1);
-  const PER_PAGE = 5;
+  const PER_PAGE = 10;
 
   // ── drawers / modals ──────────────────────────────────────────────────────────
   const [drawerRes, setDrawerRes]       = useState<Reservation | null>(null);
   const [editModal, setEditModal]       = useState<Reservation | null>(null);
   const [orderModal, setOrderModal]     = useState<Reservation | null>(null);
   const [addSearch, setAddSearch]       = useState('');
+  const [addCatFilter, setAddCatFilter] = useState('');
+  const [walkInCatFilter, setWalkInCatFilter] = useState('');
   const [statusBusy, setStatusBusy]     = useState<string | null>(null);
+  const [walkIn, setWalkIn]             = useState<WalkInState | null>(null);
+  const [walkInBusy, setWalkInBusy]     = useState(false);
+  const [walkInError, setWalkInError]   = useState('');
 
   // ── load ───────────────────────────────────────────────────────────────────────
   const loadOrders = async () => {
     setLoading(true);
     setError('');
     try {
-      const res = await ordersApi.list({ page: 1, page_size: 100 });
+      const res = await ordersApi.list({ page: 1, page_size: 500, sort_order: 'asc' });
       setReservations((res.orders ?? []).map(mapOrderToReservation).filter(r => r.id));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load orders.');
@@ -131,17 +288,42 @@ const OrdersManagement: React.FC = () => {
   useEffect(() => {
     loadOrders();
     menuApi.listItems({ page: 1, page_size: 200 }).then(r => setMenuItems(r.items ?? [])).catch(() => {});
+    menuApi.listCategories().then(r => setCategories(r.categories ?? [])).catch(() => {});
     tablesApi.list({ page_size: 100 }).then(r => setTables(r.tables ?? [])).catch(() => {});
   }, []);
 
+  useEffect(() => {
+    if (refreshSignal) loadOrders();
+  }, [refreshSignal]);
+
   // ── filtering / pagination ────────────────────────────────────────────────────
-  const filtered = useMemo(() =>
-    reservations.filter(r =>
-      r.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
-      (statusFilter === 'All Statuses' || r.status === statusFilter)
-    ),
-    [reservations, searchQuery, statusFilter]
-  );
+  const filtered = useMemo(() => {
+    const now = new Date();
+    const todayStr = fmtDate(now);
+    const { start: weekStart, end: weekEnd } = getMonWeekBounds(now);
+    const monthPrefix = todayStr.slice(0, 7); // YYYY-MM
+
+    const matches = reservations.filter(r => {
+      if (statusFilter !== 'All Statuses' && r.status !== statusFilter) return false;
+      if (searchQuery && !r.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+      if (viewMode === 'upcoming') {
+        const dt = new Date(`${r.date}T${r.time || '00:00'}:00`);
+        return r.date === todayStr && dt > now;
+      }
+      if (viewMode === 'today')  return r.date === todayStr;
+      if (viewMode === 'week')   return r.date >= weekStart && r.date <= weekEnd;
+      if (viewMode === 'month')  return r.date.startsWith(monthPrefix);
+      return true; // 'all'
+    });
+
+    const cmp = (a: Reservation, b: Reservation) => {
+      const da = new Date(`${a.date}T${a.time || '00:00'}:00`).getTime();
+      const db = new Date(`${b.date}T${b.time || '00:00'}:00`).getTime();
+      return da - db;
+    };
+    if (viewMode === 'all') return matches.sort((a, b) => cmp(b, a)); // DESC
+    return matches.sort(cmp); // ASC for time-oriented views
+  }, [reservations, searchQuery, statusFilter, viewMode]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
   const safePage   = Math.min(currentPage, totalPages);
@@ -237,16 +419,55 @@ const OrdersManagement: React.FC = () => {
     }
   };
 
-  const menuSuggestions = useMemo(() => {
-    if (!addSearch.trim()) return [];
-    return menuItems.filter(i => (i.name ?? '').toLowerCase().includes(addSearch.toLowerCase())).slice(0, 8);
-  }, [menuItems, addSearch]);
+
+  const createWalkIn = async () => {
+    if (!walkIn) return;
+    setWalkInError('');
+    setWalkInBusy(true);
+    try {
+      const res = await ordersApi.create({
+        name:       walkIn.name,
+        phone:      walkIn.phone,
+        party_size: walkIn.partySize,
+        table_id:   walkIn.tableId || undefined,
+        date:       walkIn.date,
+        time:       walkIn.time,
+        end_time:   walkIn.endTime || undefined,
+        notes:      walkIn.notes,
+        status:     walkIn.status,
+        items:      walkIn.items.map(i => ({ item_id: i.id, quantity: i.quantity })),
+        walk_in:    true,
+      });
+      if (res.success === false) { setWalkInError(res.message ?? 'Failed to create order.'); return; }
+      setWalkIn(null);
+      loadOrders();
+    } catch (err) {
+      setWalkInError(err instanceof Error ? err.message : 'Failed to create order.');
+    } finally {
+      setWalkInBusy(false);
+    }
+  };
+
+  const walkInAddItem = (menuItem: MenuItemDto) => {
+    if (!walkIn) return;
+    const id = menuItem.item_id ?? menuItem.itemId ?? '';
+    const existing = walkIn.items.find(i => i.id === id);
+    const items = existing
+      ? walkIn.items.map(i => i.id === id ? { ...i, quantity: i.quantity + 1 } : i)
+      : [...walkIn.items, { id, name: menuItem.name ?? '', price: menuItem.price ?? 0, quantity: 1, itemStatus: 'PENDING' }];
+    setWalkIn({ ...walkIn, items, search: '' });
+  };
+
+  const walkInQty = (id: string, delta: number) => {
+    if (!walkIn) return;
+    setWalkIn({ ...walkIn, items: walkIn.items.map(i => i.id === id ? { ...i, quantity: Math.max(0, i.quantity + delta) } : i).filter(i => i.quantity > 0) });
+  };
 
   // ── render ────────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col animate-fadeIn">
       {/* Header */}
-      <header className="mb-10 flex md:items-end justify-between gap-6">
+      <header className="mb-6 flex md:items-end justify-between gap-6">
         <div>
           <nav className="flex gap-2 text-[10px] text-on-surface-variant uppercase tracking-widest mb-2">
             <span>Admin</span><span>/</span><span className="text-primary font-bold">Orders</span>
@@ -254,14 +475,55 @@ const OrdersManagement: React.FC = () => {
           <h2 className="font-serif text-5xl font-bold text-on-surface">Orders Management</h2>
           <p className="text-on-surface-variant text-sm mt-2">View, confirm and manage customer reservations.</p>
         </div>
-        <button onClick={loadOrders} className="flex items-center gap-2 px-4 py-2 bg-white border border-outline-variant/30 rounded-lg text-xs font-semibold hover:bg-[#f3f4f5] transition-all whitespace-nowrap">
-          <span className="material-symbols-outlined text-base">refresh</span>
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => { setWalkIn(defaultWalkIn()); setWalkInError(''); setWalkInCatFilter(''); }}
+            className="flex items-center gap-2 px-4 py-2 bg-[#735c00] text-white rounded-lg text-xs font-semibold hover:bg-[#5d4a00] transition-all whitespace-nowrap shadow-sm"
+          >
+            <span className="material-symbols-outlined text-base">add</span>
+            Walk-in Order
+          </button>
+          <button onClick={loadOrders} className="flex items-center gap-2 px-4 py-2 bg-white border border-outline-variant/30 rounded-lg text-xs font-semibold hover:bg-[#f3f4f5] transition-all whitespace-nowrap">
+            <span className="material-symbols-outlined text-base">refresh</span>
+            Refresh
+          </button>
+        </div>
       </header>
 
+      {/* View mode tabs */}
+      <div className="flex gap-1 p-1 bg-white rounded-xl shadow-sm mb-4 border border-outline-variant/10 w-fit">
+        {VIEW_TABS.map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => { setViewMode(tab.key); setCurrentPage(1); }}
+            className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
+              viewMode === tab.key
+                ? 'bg-[#735c00] text-white shadow-sm'
+                : 'text-[#4d4635] hover:bg-[#f3f4f5]'
+            }`}
+          >
+            {tab.label}
+            <span className={`ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full ${viewMode === tab.key ? 'bg-white/20 text-white' : 'bg-[#e1e3e4] text-[#4d4635]'}`}>
+              {tab.key === 'all' ? reservations.length : (() => {
+                const now = new Date();
+                const todayStr = fmtDate(now);
+                const { start: ws, end: we } = getMonWeekBounds(now);
+                const mp = todayStr.slice(0, 7);
+                return reservations.filter(r => {
+                  if (tab.key === 'upcoming') { const dt = new Date(`${r.date}T${r.time || '00:00'}:00`); return r.date === todayStr && dt > now; }
+                  if (tab.key === 'today')  return r.date === todayStr;
+                  if (tab.key === 'week')   return r.date >= ws && r.date <= we;
+                  if (tab.key === 'month')  return r.date.startsWith(mp);
+                  return true;
+                }).length;
+              })()}
+            </span>
+          </button>
+        ))}
+      </div>
+
       {/* Filter bar */}
-      <section className="bg-white p-6 rounded-xl shadow-sm mb-6 flex flex-wrap items-center gap-4 border border-outline-variant/10">
+      <section className="bg-white p-4 rounded-xl shadow-sm mb-6 flex flex-wrap items-center gap-4 border border-outline-variant/10">
         <div className="flex-grow relative">
           <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant">search</span>
           <input
@@ -333,7 +595,7 @@ const OrdersManagement: React.FC = () => {
                   <button onClick={() => setEditModal({ ...res })} className="p-2 text-on-surface-variant hover:text-[#735c00]" title="Edit booking">
                     <span className="material-symbols-outlined text-xl">edit_note</span>
                   </button>
-                  <button onClick={() => { setOrderModal({ ...res }); setAddSearch(''); }} className="p-2 text-on-surface-variant hover:text-[#735c00]" title="Edit items">
+                  <button onClick={() => { setOrderModal({ ...res }); setAddSearch(''); setAddCatFilter(''); }} className="p-2 text-on-surface-variant hover:text-[#735c00]" title="Edit items">
                     <span className="material-symbols-outlined text-xl">restaurant</span>
                   </button>
                   <button onClick={() => setDrawerRes(res)} className="p-2 text-on-surface-variant hover:text-[#735c00]" title="View details">
@@ -551,6 +813,120 @@ const OrdersManagement: React.FC = () => {
       {/* ────────────────────────────────────────────────────────────────────────
           MODAL: Sửa món ăn trong đơn
       ──────────────────────────────────────────────────────────────────────── */}
+      {/* ────────────────────────────────────────────────────────────────────────
+          MODAL: Walk-in Order
+      ──────────────────────────────────────────────────────────────────────── */}
+      {walkIn && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[92vh] overflow-y-auto p-8">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h3 className="font-serif text-2xl font-bold text-on-surface">Walk-in Order</h3>
+                <p className="text-xs text-on-surface-variant mt-0.5">Customer is present — no advance booking required</p>
+              </div>
+              <button className="p-1 hover:bg-[#f3f4f5] rounded-full" onClick={() => setWalkIn(null)}>
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {/* Name + Phone */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-on-surface-variant mb-1">Guest Name *</label>
+                  <input className="w-full bg-[#f8f9fa] border border-outline-variant/30 rounded-lg p-3 text-sm" placeholder="Nguyen Van A" value={walkIn.name} onChange={e => setWalkIn({ ...walkIn, name: e.target.value })} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-on-surface-variant mb-1">Phone *</label>
+                  <input className="w-full bg-[#f8f9fa] border border-outline-variant/30 rounded-lg p-3 text-sm" placeholder="09xxxxxxxx" value={walkIn.phone} onChange={e => setWalkIn({ ...walkIn, phone: e.target.value })} />
+                </div>
+              </div>
+
+              {/* Party size + Table + Status */}
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-on-surface-variant mb-1">Guests *</label>
+                  <input type="number" min={1} className="w-full bg-[#f8f9fa] border border-outline-variant/30 rounded-lg p-3 text-sm" value={walkIn.partySize} onChange={e => setWalkIn({ ...walkIn, partySize: parseInt(e.target.value) || 1 })} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-on-surface-variant mb-1">Table</label>
+                  <select className="w-full bg-[#f8f9fa] border border-outline-variant/30 rounded-lg p-3 text-sm" value={walkIn.tableId} onChange={e => setWalkIn({ ...walkIn, tableId: e.target.value })}>
+                    <option value="">Auto-assign</option>
+                    {tables.slice().sort((a, b) => (a.table_number ?? 0) - (b.table_number ?? 0)).map(t => (
+                      <option key={t.table_id} value={t.table_id}>Table {t.table_number} (cap {t.capacity})</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-on-surface-variant mb-1">Status</label>
+                  <select className="w-full bg-[#f8f9fa] border border-outline-variant/30 rounded-lg p-3 text-sm" value={walkIn.status} onChange={e => setWalkIn({ ...walkIn, status: e.target.value })}>
+                    {STATUS_OPTIONS.map(s => <option key={s}>{s}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {/* Date + Time */}
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-on-surface-variant mb-1">Date</label>
+                  <input type="date" className="w-full bg-[#f8f9fa] border border-outline-variant/30 rounded-lg p-3 text-sm" value={walkIn.date} onChange={e => setWalkIn({ ...walkIn, date: e.target.value })} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-on-surface-variant mb-1">Start Time</label>
+                  <input type="time" className="w-full bg-[#f8f9fa] border border-outline-variant/30 rounded-lg p-3 text-sm" value={walkIn.time} onChange={e => setWalkIn({ ...walkIn, time: e.target.value })} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-on-surface-variant mb-1">End Time</label>
+                  <input type="time" className="w-full bg-[#f8f9fa] border border-outline-variant/30 rounded-lg p-3 text-sm" value={walkIn.endTime} onChange={e => setWalkIn({ ...walkIn, endTime: e.target.value })} />
+                </div>
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label className="block text-xs font-semibold text-on-surface-variant mb-1">Notes</label>
+                <textarea className="w-full bg-[#f8f9fa] border border-outline-variant/30 rounded-lg p-3 text-sm resize-none" rows={2} placeholder="Allergies, special requests..." value={walkIn.notes} onChange={e => setWalkIn({ ...walkIn, notes: e.target.value })} />
+              </div>
+
+              {/* Items */}
+              <div className="p-4 bg-[#ffe088]/10 rounded-xl border border-[#ffe088]/30">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-xs font-bold text-[#574500] uppercase">Add Items (optional)</p>
+                  {walkIn.items.length > 0 && (
+                    <span className="text-xs font-bold text-[#735c00]">
+                      Subtotal: {fmtVnd(walkIn.items.reduce((s, i) => s + i.price * i.quantity, 0))}
+                    </span>
+                  )}
+                </div>
+                <MenuBrowser
+                  menuItems={menuItems}
+                  categories={categories}
+                  currentItems={walkIn.items}
+                  search={walkIn.search}
+                  catFilter={walkInCatFilter}
+                  onSearchChange={s => setWalkIn({ ...walkIn, search: s })}
+                  onCatChange={setWalkInCatFilter}
+                  onAdd={walkInAddItem}
+                  onQtyChange={walkInQty}
+                />
+              </div>
+
+              {walkInError && <p className="text-xs text-red-600 bg-red-50 p-3 rounded-lg">{walkInError}</p>}
+
+              <div className="flex gap-4 mt-2">
+                <button className="flex-1 border border-outline-variant text-xs py-3 rounded-lg" onClick={() => setWalkIn(null)}>Cancel</button>
+                <button
+                  disabled={walkInBusy || !walkIn.name || !walkIn.phone}
+                  className="flex-1 bg-[#735c00] text-white text-xs py-3 rounded-lg hover:bg-[#5d4a00] disabled:opacity-50"
+                  onClick={createWalkIn}
+                >
+                  {walkInBusy ? 'Creating...' : 'Create Walk-in Order'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {orderModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto p-8">
@@ -588,31 +964,18 @@ const OrdersManagement: React.FC = () => {
 
             {/* Add item from menu */}
             <div className="p-4 bg-[#ffe088]/10 rounded-xl border border-[#ffe088]/30">
-              <label className="block text-xs font-bold text-[#574500] mb-2 uppercase">Add from Menu</label>
-              <div className="relative">
-                <input
-                  className="w-full px-3 py-2 bg-white border border-outline-variant rounded-lg text-xs"
-                  placeholder="Type to search..."
-                  type="text"
-                  value={addSearch}
-                  onChange={e => setAddSearch(e.target.value)}
-                />
-                {menuSuggestions.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-outline-variant rounded-lg shadow-lg z-10 max-h-44 overflow-y-auto">
-                    {menuSuggestions.map(item => (
-                      <button
-                        key={item.item_id ?? item.itemId}
-                        type="button"
-                        className="w-full text-left px-3 py-2.5 hover:bg-[#f3f4f5] flex justify-between items-center text-xs border-b border-gray-50 last:border-0"
-                        onClick={() => handleAddItem(item)}
-                      >
-                        <span className="font-semibold">{item.name}</span>
-                        <span className="text-[#735c00] font-semibold ml-4">{fmtVnd(item.price ?? 0)}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <p className="text-xs font-bold text-[#574500] mb-3 uppercase">Add from Menu</p>
+              <MenuBrowser
+                menuItems={menuItems}
+                categories={categories}
+                currentItems={orderModal.items}
+                search={addSearch}
+                catFilter={addCatFilter}
+                onSearchChange={setAddSearch}
+                onCatChange={setAddCatFilter}
+                onAdd={handleAddItem}
+                onQtyChange={handleQty}
+              />
             </div>
 
             {/* Subtotal preview */}

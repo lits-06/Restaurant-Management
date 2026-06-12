@@ -25,7 +25,7 @@ func NewPostgresUserRepository(db *sql.DB) (*PostgresUserRepository, error) {
 func (r *PostgresUserRepository) ensureSchema(ctx context.Context) error {
 	_, err := r.db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS users (
-			user_id    VARCHAR(36)  PRIMARY KEY,
+			user_id    VARCHAR(36)  PRIMARY KEY DEFAULT gen_random_uuid(),
 			email      VARCHAR(255) NOT NULL UNIQUE,
 			username   VARCHAR(100) NOT NULL UNIQUE,
 			full_name  VARCHAR(255) NOT NULL,

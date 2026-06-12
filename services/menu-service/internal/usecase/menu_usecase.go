@@ -25,7 +25,7 @@ func NewMenuUseCase(menuItemRepo repository.MenuItemRepository, categoryRepo rep
 // CreateMenuItem creates a new menu item
 func (uc *MenuUseCase) CreateMenuItem(ctx context.Context, name, description string, price float64, category, imageURL string) (*domain.MenuItem, error) {
 	// Verify category exists
-	c, err := uc.categoryRepo.GetByName(ctx, category)
+	c, err := uc.categoryRepo.GetByID(ctx, category)
 	if err != nil {
 		return nil, fmt.Errorf("category not found: %w", err)
 	}

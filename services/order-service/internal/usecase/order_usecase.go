@@ -89,6 +89,11 @@ func (uc *OrderUseCase) CreateOrder(ctx context.Context, tableID, userID, name, 
 	if err := uc.orderRepo.Create(ctx, order); err != nil {
 		return nil, fmt.Errorf("failed to save order: %w", err)
 	}
+	if uc.notifClient != nil {
+		uc.notifyAdmin("ORDER_CREATED",
+			fmt.Sprintf("New order from %s (%d guests)", order.Name, order.PartySize),
+			order)
+	}
 	return order, nil
 }
 
@@ -228,14 +233,15 @@ func (uc *OrderUseCase) CancelOrder(ctx context.Context, orderID string) error {
 }
 
 // ListOrders retrieves orders with pagination and filters.
-func (uc *OrderUseCase) ListOrders(ctx context.Context, page, pageSize int, status domain.OrderStatus, keyword, userID string) ([]*domain.Order, int, error) {
+// sortOrder accepts "asc" or "desc" (default "desc").
+func (uc *OrderUseCase) ListOrders(ctx context.Context, page, pageSize int, status domain.OrderStatus, keyword, userID, sortOrder string) ([]*domain.Order, int, error) {
 	if page < 1 {
 		page = 1
 	}
-	if pageSize < 1 || pageSize > 100 {
+	if pageSize < 1 || pageSize > 500 {
 		pageSize = 20
 	}
-	orders, total, err := uc.orderRepo.List(ctx, page, pageSize, status, keyword, userID)
+	orders, total, err := uc.orderRepo.List(ctx, page, pageSize, status, keyword, userID, sortOrder)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to list orders: %w", err)
 	}
@@ -255,8 +261,16 @@ func (uc *OrderUseCase) UpdateOrderStatus(ctx context.Context, orderID string, n
 	if err := uc.orderRepo.Update(ctx, order); err != nil {
 		return nil, fmt.Errorf("failed to save order: %w", err)
 	}
-	if newStatus == domain.StatusConfirmed && uc.notifClient != nil {
-		uc.notifyChef(ctx, order)
+	if uc.notifClient != nil {
+		uc.notifyAdmin("ORDER_STATUS_CHANGED",
+			fmt.Sprintf("Order %s → %s (%s, %d guests)", order.OrderID[:8], string(newStatus), order.Name, order.PartySize),
+			order)
+		if newStatus == domain.StatusConfirmed {
+			uc.notifyChef(ctx, order)
+		}
+		if newStatus == domain.StatusCompleted {
+			uc.notifyWaiterOrderComplete(ctx, order)
+		}
 	}
 	return order, nil
 }
@@ -368,6 +382,43 @@ func (uc *OrderUseCase) notifyChef(ctx context.Context, order *domain.Order) {
 		bgCtx := context.Background()
 		uc.notifClient.SendNotification(bgCtx, req) //nolint:errcheck
 	}()
+}
+
+// notifyWaiterOrderComplete sends ORDER_COMPLETED notification to WAITER channel so they know to clean the table.
+func (uc *OrderUseCase) notifyWaiterOrderComplete(ctx context.Context, order *domain.Order) {
+	req := &notifpb.SendNotificationRequest{
+		Type:         "ORDER_COMPLETED",
+		TargetRole:   "WAITER",
+		OrderId:      order.OrderID,
+		TableId:      order.TableID,
+		CustomerName: order.Name,
+		PartySize:    order.PartySize,
+		Message:      fmt.Sprintf("Table ready for cleaning - %s (%d guests)", order.Name, order.PartySize),
+	}
+	go func() {
+		bgCtx := context.Background()
+		uc.notifClient.SendNotification(bgCtx, req) //nolint:errcheck
+	}()
+}
+
+// notifyAdmin sends a notification to both ADMIN and MANAGER channels.
+func (uc *OrderUseCase) notifyAdmin(notifType, message string, order *domain.Order) {
+	for _, role := range []string{"ADMIN", "MANAGER"} {
+		req := &notifpb.SendNotificationRequest{
+			Type:         notifType,
+			TargetRole:   role,
+			OrderId:      order.OrderID,
+			TableId:      order.TableID,
+			CustomerName: order.Name,
+			PartySize:    order.PartySize,
+			Notes:        order.Notes,
+			Message:      message,
+		}
+		r := req
+		go func() {
+			uc.notifClient.SendNotification(context.Background(), r) //nolint:errcheck
+		}()
+	}
 }
 
 // notifyWaiter sends ITEM_READY notification to WAITER channel.

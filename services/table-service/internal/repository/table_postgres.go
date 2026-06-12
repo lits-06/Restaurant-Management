@@ -29,7 +29,7 @@ func NewPostgresTableRepository(db *sql.DB) (*PostgresTableRepository, error) {
 func (r *PostgresTableRepository) ensureSchema(ctx context.Context) error {
 	const query = `
 		CREATE TABLE IF NOT EXISTS restaurant_tables (
-			table_id     VARCHAR(36)  PRIMARY KEY,
+			table_id     VARCHAR(36)  PRIMARY KEY DEFAULT gen_random_uuid(),
 			table_number INTEGER      NOT NULL UNIQUE,
 			capacity     INTEGER      NOT NULL,
 			status       VARCHAR(32)  NOT NULL DEFAULT 'AVAILABLE',

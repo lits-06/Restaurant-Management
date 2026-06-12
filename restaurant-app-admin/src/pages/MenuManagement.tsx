@@ -57,8 +57,8 @@ const MenuManagement: React.FC = () => {
   // ── helpers that close over categories ────────────────────────────────────────
 
   const mapDto = (item: MenuItemDto): Dish => {
-    const catId   = item.category_id ?? item.categoryId ?? '';
-    const catName = categories.find(c => c.id === catId)?.name ?? item.category ?? 'Other';
+    const catId   = item.category_id ?? item.categoryId ?? item.category ?? '';
+    const catName = categories.find(c => c.id === catId)?.name ?? 'Other';
     return {
       id:          getItemId(item),
       name:        item.name ?? '',
@@ -88,8 +88,8 @@ const MenuManagement: React.FC = () => {
     try {
       const res = await menuApi.listItems({ page: 1, page_size: 100 });
       const mapped = (res.items ?? []).map(item => {
-        const catId   = item.category_id ?? item.categoryId ?? '';
-        const catName = cats.find(c => c.id === catId)?.name ?? item.category ?? 'Other';
+        const catId   = item.category_id ?? item.categoryId ?? item.category ?? '';
+        const catName = cats.find(c => c.id === catId)?.name ?? 'Other';
         return {
           id:          getItemId(item),
           name:        item.name ?? '',

@@ -7,6 +7,7 @@ import (
 
 	"restaurant-management/api-gateway/internal/grpcclient"
 	authpb "restaurant-management/proto/auth"
+	"google.golang.org/grpc/status"
 )
 
 // AuthHandler exposes HTTP endpoints backed by auth-service gRPC methods.
@@ -51,6 +52,90 @@ type changePasswordRequest struct {
 	NewPassword string `json:"new_password"`
 }
 
+// ── Shared auth helpers used by other handlers ───────────────────────────────
+
+// verifyBearerToken extracts and verifies the Bearer token from the request.
+// On failure, writes the appropriate HTTP error and returns nil.
+func verifyBearerToken(w http.ResponseWriter, r *http.Request, authClient *grpcclient.AuthClient) *authpb.VerifyTokenResponse {
+	token := bearerToken(r.Header.Get("Authorization"))
+	if token == "" {
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"success": false, "message": "authentication required"})
+		return nil
+	}
+	resp, err := authClient.VerifyToken(r.Context(), &authpb.VerifyTokenRequest{AccessToken: token})
+	if err != nil || !resp.GetValid() {
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"success": false, "message": "invalid or expired token"})
+		return nil
+	}
+	return resp
+}
+
+// requireAdminOrManager verifies token and requires ADMIN or MANAGER role.
+// Returns the token response on success, nil on failure (HTTP error already written).
+func requireAdminOrManager(w http.ResponseWriter, r *http.Request, authClient *grpcclient.AuthClient) *authpb.VerifyTokenResponse {
+	claims := verifyBearerToken(w, r, authClient)
+	if claims == nil {
+		return nil
+	}
+	for _, role := range claims.GetRoles() {
+		if role == "ADMIN" || role == "MANAGER" {
+			return claims
+		}
+	}
+	writeJSON(w, http.StatusForbidden, map[string]any{"success": false, "message": "insufficient permissions"})
+	return nil
+}
+
+// requireStaff verifies token and requires any staff role (ADMIN/MANAGER/CHEF/WAITER).
+func requireStaff(w http.ResponseWriter, r *http.Request, authClient *grpcclient.AuthClient) *authpb.VerifyTokenResponse {
+	claims := verifyBearerToken(w, r, authClient)
+	if claims == nil {
+		return nil
+	}
+	for _, role := range claims.GetRoles() {
+		switch role {
+		case "ADMIN", "MANAGER", "CHEF", "WAITER":
+			return claims
+		}
+	}
+	writeJSON(w, http.StatusForbidden, map[string]any{"success": false, "message": "staff access required"})
+	return nil
+}
+
+// requireAdmin verifies token and requires ADMIN role only.
+func requireAdmin(w http.ResponseWriter, r *http.Request, authClient *grpcclient.AuthClient) *authpb.VerifyTokenResponse {
+	claims := verifyBearerToken(w, r, authClient)
+	if claims == nil {
+		return nil
+	}
+	for _, role := range claims.GetRoles() {
+		if role == "ADMIN" {
+			return claims
+		}
+	}
+	writeJSON(w, http.StatusForbidden, map[string]any{"success": false, "message": "admin access required"})
+	return nil
+}
+
+// authBizError writes a 400 if the gRPC response carries success=false.
+// Returns true if an error was written (caller should return immediately).
+func authBizError(w http.ResponseWriter, success bool, message string) bool {
+	if !success {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"success": false, "message": message})
+		return true
+	}
+	return false
+}
+
+// grpcErrMsg extracts the human-readable description from a gRPC status error,
+// stripping the "rpc error: code = X desc = " prefix.
+func grpcErrMsg(err error) string {
+	if s, ok := status.FromError(err); ok {
+		return s.Message()
+	}
+	return err.Error()
+}
+
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	if !allowPost(w, r) {
 		return
@@ -70,7 +155,10 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		Phone:    req.Phone,
 	})
 	if err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
+		writeJSON(w, http.StatusBadRequest, map[string]any{"success": false, "message": grpcErrMsg(err)})
+		return
+	}
+	if authBizError(w, resp.GetSuccess(), resp.GetMessage()) {
 		return
 	}
 
@@ -93,7 +181,10 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		Password: req.Password,
 	})
 	if err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
+		writeJSON(w, http.StatusBadRequest, map[string]any{"success": false, "message": grpcErrMsg(err)})
+		return
+	}
+	if authBizError(w, resp.GetSuccess(), resp.GetMessage()) {
 		return
 	}
 
@@ -113,7 +204,10 @@ func (h *AuthHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := h.authClient.RefreshToken(r.Context(), &authpb.RefreshTokenRequest{RefreshToken: req.RefreshToken})
 	if err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
+		writeJSON(w, http.StatusBadRequest, map[string]any{"success": false, "message": grpcErrMsg(err)})
+		return
+	}
+	if authBizError(w, resp.GetSuccess(), resp.GetMessage()) {
 		return
 	}
 
@@ -133,7 +227,11 @@ func (h *AuthHandler) VerifyToken(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := h.authClient.VerifyToken(r.Context(), &authpb.VerifyTokenRequest{AccessToken: req.AccessToken})
 	if err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
+		writeJSON(w, http.StatusBadRequest, map[string]any{"success": false, "message": grpcErrMsg(err)})
+		return
+	}
+	if !resp.GetValid() {
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"success": false, "message": "token is invalid or expired"})
 		return
 	}
 
@@ -164,7 +262,10 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		RefreshToken: req.RefreshToken,
 	})
 	if err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
+		writeJSON(w, http.StatusBadRequest, map[string]any{"success": false, "message": grpcErrMsg(err)})
+		return
+	}
+	if authBizError(w, resp.GetSuccess(), resp.GetMessage()) {
 		return
 	}
 
@@ -188,7 +289,10 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		NewPassword: req.NewPassword,
 	})
 	if err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
+		writeJSON(w, http.StatusBadRequest, map[string]any{"success": false, "message": grpcErrMsg(err)})
+		return
+	}
+	if authBizError(w, resp.GetSuccess(), resp.GetMessage()) {
 		return
 	}
 

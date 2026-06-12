@@ -234,15 +234,20 @@ func (uc *UserUseCase) GetUserRoles(ctx context.Context, userID string) ([]domai
 	return user.Roles, nil
 }
 
-// VerifyCredentials verifies email + password and returns the user if valid.
+// VerifyCredentials verifies login credentials. The first argument accepts
+// either an email address or a username — email is tried first, then username.
 // Called by auth-service during Login.
-func (uc *UserUseCase) VerifyCredentials(ctx context.Context, email, password string) (*domain.User, error) {
-	if email == "" {
+func (uc *UserUseCase) VerifyCredentials(ctx context.Context, emailOrUsername, password string) (*domain.User, error) {
+	if emailOrUsername == "" {
 		return nil, domain.ErrInvalidEmail
 	}
-	user, err := uc.userRepo.GetByEmail(ctx, email)
+	user, err := uc.userRepo.GetByEmail(ctx, emailOrUsername)
 	if err != nil {
-		return nil, domain.ErrInvalidCredentials // mask not-found
+		// Fall back to username lookup
+		user, err = uc.userRepo.GetByUsername(ctx, emailOrUsername)
+		if err != nil {
+			return nil, domain.ErrInvalidCredentials // mask not-found
+		}
 	}
 	if err := uc.passwordHasher.Compare(user.Password, password); err != nil {
 		return nil, domain.ErrInvalidCredentials

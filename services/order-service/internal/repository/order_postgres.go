@@ -53,15 +53,29 @@ func (r *PostgresOrderRepository) ensureSchema(ctx context.Context) error {
 		CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id);
 
 		CREATE TABLE IF NOT EXISTS order_items (
-			item_id     VARCHAR(36) PRIMARY KEY REFERENCES menu_items(item_id),
+			item_id     VARCHAR(36) NOT NULL REFERENCES menu_items(item_id),
 			order_id    VARCHAR(36) NOT NULL REFERENCES orders(order_id) ON DELETE CASCADE,
 			name        VARCHAR(200) NOT NULL,
 			price       DOUBLE PRECISION NOT NULL,
 			quantity    INTEGER NOT NULL,
-			item_status VARCHAR(16) NOT NULL DEFAULT 'PENDING'
+			item_status VARCHAR(16) NOT NULL DEFAULT 'PENDING',
+			PRIMARY KEY (order_id, item_id)
 		);
 
 		ALTER TABLE order_items ADD COLUMN IF NOT EXISTS item_status VARCHAR(16) NOT NULL DEFAULT 'PENDING';
+
+		-- Migrate: fix order_items PK from single item_id to composite (order_id, item_id)
+		DO $$
+		DECLARE col_count INT;
+		BEGIN
+			SELECT COUNT(*) INTO col_count
+			FROM information_schema.key_column_usage
+			WHERE table_name = 'order_items' AND constraint_name = 'order_items_pkey';
+			IF col_count = 1 THEN
+				ALTER TABLE order_items DROP CONSTRAINT order_items_pkey;
+				ALTER TABLE order_items ADD PRIMARY KEY (order_id, item_id);
+			END IF;
+		END $$;
 
 		CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
 		CREATE INDEX IF NOT EXISTS idx_orders_name ON orders(name);
@@ -240,7 +254,7 @@ func (r *PostgresOrderRepository) Delete(ctx context.Context, orderID string) er
 	return nil
 }
 
-func (r *PostgresOrderRepository) List(ctx context.Context, page, pageSize int, status domain.OrderStatus, keyword, userID string) ([]*domain.Order, int, error) {
+func (r *PostgresOrderRepository) List(ctx context.Context, page, pageSize int, status domain.OrderStatus, keyword, userID, sortOrder string) ([]*domain.Order, int, error) {
 	clauses := make([]string, 0, 3)
 	args := make([]any, 0, 4)
 
@@ -280,7 +294,11 @@ func (r *PostgresOrderRepository) List(ctx context.Context, page, pageSize int, 
 	if whereClause != "" {
 		listQuery += " WHERE " + whereClause
 	}
-	listQuery += fmt.Sprintf(" ORDER BY time DESC LIMIT $%d OFFSET $%d", len(args)+1, len(args)+2)
+	dir := "DESC"
+	if strings.EqualFold(strings.TrimSpace(sortOrder), "asc") {
+		dir = "ASC"
+	}
+	listQuery += fmt.Sprintf(" ORDER BY time %s LIMIT $%d OFFSET $%d", dir, len(args)+1, len(args)+2)
 
 	queryArgs := append(args, pageSize, offset)
 	rows, err := r.db.QueryContext(ctx, listQuery, queryArgs...)

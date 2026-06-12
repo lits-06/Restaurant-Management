@@ -50,23 +50,18 @@ func (r *PostgresMenuItemRepository) Create(ctx context.Context, item *domain.Me
 	}
 
 	const query = `
-		INSERT INTO menu_items (
-			name,
-			description,
-			price,
-			category_id,
-			image_url
-		)
+		INSERT INTO menu_items (name, description, price, category_id, image_url)
 		VALUES ($1, $2, $3, $4, $5)
+		RETURNING item_id
 	`
 
-	_, err := r.db.ExecContext(ctx, query,
+	err := r.db.QueryRowContext(ctx, query,
 		item.Name,
 		item.Description,
 		item.Price,
 		item.CategoryID,
 		item.ImageURL,
-	)
+	).Scan(&item.ItemID)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) {

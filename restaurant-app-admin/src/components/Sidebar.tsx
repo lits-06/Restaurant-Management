@@ -6,17 +6,27 @@ interface SidebarProps {
   setActiveTab: (tab: string) => void;
   user: AdminUser;
   onLogout: () => void;
+  unreadCount?: number;
+  onBellClick?: () => void;
+  connected?: boolean;
+  bellRef?: React.RefObject<HTMLButtonElement>;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, user, onLogout }) => {
-  const menuItems = [
-    { icon: 'dashboard',       label: 'Dashboard' },
-    { icon: 'restaurant_menu', label: 'Menu' },
-    { icon: 'receipt_long',    label: 'Orders' },
-    { icon: 'calendar_month',  label: 'Staff' },
-    { icon: 'table_restaurant',label: 'Tables' },
-    { icon: 'group',           label: 'Users' },
+const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, user, onLogout, unreadCount = 0, onBellClick, connected, bellRef }) => {
+  const roles = user.roles;
+  const isAdmin = roles.includes('ADMIN');
+  const isAdminOrManager = isAdmin || roles.includes('MANAGER');
+  const isStaff = isAdminOrManager || roles.includes('CHEF') || roles.includes('WAITER');
+
+  const allMenuItems = [
+    { icon: 'dashboard',        label: 'Dashboard',  visible: isAdminOrManager },
+    { icon: 'restaurant_menu',  label: 'Menu',       visible: isAdminOrManager },
+    { icon: 'receipt_long',     label: 'Orders',     visible: isStaff },
+    { icon: 'calendar_month',   label: 'Staff',      visible: isStaff },
+    { icon: 'table_restaurant', label: 'Tables',     visible: isAdminOrManager },
+    { icon: 'group',            label: 'Users',      visible: isAdmin },
   ];
+  const menuItems = allMenuItems.filter(item => item.visible);
 
   const initials = (user.full_name || user.username || 'A')
     .split(' ')
@@ -37,11 +47,31 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, user, onLogo
 
   return (
     <aside className="h-screen w-64 fixed left-0 top-0 bg-[#edeeef] flex flex-col py-2 shadow-md z-50">
-      <div className="px-6 py-8">
-        <h1 className="font-serif text-2xl text-[#735c00] font-semibold">LuxeBistro Admin</h1>
-        <p className="text-xs font-semibold tracking-wider text-[#4d4635] opacity-70 mt-1 uppercase">
-          Service Mode: Dinner
-        </p>
+      <div className="px-6 py-8 flex items-start justify-between">
+        <div>
+          <h1 className="font-serif text-2xl text-[#735c00] font-semibold">LuxeBistro Admin</h1>
+          <p className="text-xs font-semibold tracking-wider text-[#4d4635] opacity-70 mt-1 uppercase">
+            Service Mode: Dinner
+          </p>
+        </div>
+        {onBellClick && (
+          <button
+            ref={bellRef}
+            onClick={onBellClick}
+            title={connected ? 'Notifications (connected)' : 'Notifications (disconnected)'}
+            className="relative mt-1 p-1.5 rounded-lg hover:bg-[#e1e3e4] transition-all text-[#4d4635]"
+          >
+            <span className="material-symbols-outlined text-xl">notifications</span>
+            {unreadCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-0.5 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center leading-none">
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
+            {!connected && (
+              <span className="absolute bottom-0 right-0 w-2 h-2 bg-gray-400 rounded-full border border-[#edeeef]" />
+            )}
+          </button>
+        )}
       </div>
 
       <nav className="flex-grow">

@@ -165,29 +165,29 @@ POST   /auth/verify
 POST   /auth/logout
 POST   /auth/change-password
 
-# ── Menu ──────────────────────────────────────────────────────── public (no role checks)
-GET    /menu/items
-POST   /menu/items
-GET    /menu/items/{id}
-PUT    /menu/items/{id}
-DELETE /menu/items/{id}
+# ── Menu ──────────────────────────────────────────────────────── mixed
+GET    /menu/items                               # public
+POST   /menu/items                               # admin (ADMIN/MANAGER)
+GET    /menu/items/{id}                          # public
+PUT    /menu/items/{id}                          # admin
+DELETE /menu/items/{id}                          # admin
 
-GET    /menu/categories
-POST   /menu/categories
-GET    /menu/categories/{id}
-PUT    /menu/categories/{id}
-DELETE /menu/categories/{id}
+GET    /menu/categories                          # public
+POST   /menu/categories                          # admin
+GET    /menu/categories/{id}                     # public
+PUT    /menu/categories/{id}                     # admin
+DELETE /menu/categories/{id}                     # admin
 
 # ── Orders ────────────────────────────────────────────────────── mixed
-GET    /orders                                   # public; filter by user_id → owner or staff only
+GET    /orders                                   # staff-only (no filter); filter by user_id → owner or staff
 POST   /orders                                   # optional auth; user_id auto-set from token if present
-GET    /orders/{id}                              # optional; owner or staff
-PUT    /orders/{id}                              # optional; owner or staff
-DELETE /orders/{id}                              # optional; owner or staff
-POST   /orders/{id}/cancel                       # optional; owner or staff
+GET    /orders/{id}                              # optional; if order.user_id set → owner or staff; walk-in = public
+PUT    /orders/{id}                              # walk-in = staff; owned = owner or staff
+DELETE /orders/{id}                              # walk-in = staff; owned = owner or staff
+POST   /orders/{id}/cancel                       # walk-in = staff; owned = owner or staff
 PATCH  /orders/{id}/status                       # staff (ADMIN/MANAGER/CHEF/WAITER)
-POST   /orders/{id}/items                        # optional; owner or staff
-DELETE /orders/{id}/items/{itemId}               # optional; owner or staff
+POST   /orders/{id}/items                        # walk-in = staff; owned = owner or staff
+DELETE /orders/{id}/items/{itemId}               # walk-in = staff; owned = owner or staff
 PATCH  /orders/{id}/items/{itemId}/status        # chef (COOKING/READY) or waiter (SERVED)
 
 # ── Schedule ──────────────────────────────────────────────────── staff required
@@ -197,25 +197,25 @@ GET    /schedule/shifts/{id}                     # staff; owner or admin
 PUT    /schedule/shifts/{id}                     # staff; owner or admin
 DELETE /schedule/shifts/{id}                     # staff; owner or admin
 
-# ── Tables ────────────────────────────────────────────────────── public (no role checks)
-GET    /tables
-POST   /tables
-GET    /tables/available
-GET    /tables/{id}
-PUT    /tables/{id}
-DELETE /tables/{id}
-PATCH  /tables/{id}/status
+# ── Tables ────────────────────────────────────────────────────── mixed
+GET    /tables                                   # public
+POST   /tables                                   # admin
+GET    /tables/available                         # public
+GET    /tables/{id}                              # public
+PUT    /tables/{id}                              # admin
+DELETE /tables/{id}                              # admin
+PATCH  /tables/{id}/status                       # staff (any role — waiter marks CLEANING)
 
-# ── Users ─────────────────────────────────────────────────────── public (no role checks)
-GET    /users/by-email?email=...
-GET    /users
-POST   /users
-GET    /users/{id}
-PUT    /users/{id}
-DELETE /users/{id}
-GET    /users/{id}/roles
-PATCH  /users/{id}/roles
-PATCH  /users/{id}/password
+# ── Users ─────────────────────────────────────────────────────── mixed
+GET    /users/by-email?email=...                 # login required (verifyBearerToken)
+GET    /users                                    # admin
+POST   /users                                    # admin
+GET    /users/{id}                               # public (needed for admin login bootstrap)
+PUT    /users/{id}                               # admin
+DELETE /users/{id}                               # ADMIN only
+GET    /users/{id}/roles                         # admin
+PATCH  /users/{id}/roles                         # ADMIN only
+PATCH  /users/{id}/password                      # login required (old_password provides ownership check)
 
 # ── Misc ──────────────────────────────────────────────────────────────
 GET    /health                                   # public
@@ -251,7 +251,7 @@ services/<name>-service/
 - JWT (HS256): short-lived access token + long-lived refresh token
   - Claims: `user_id`, `email`, `roles []string`
   - Secret from `JWT_SECRET` env var (logs warning if default is used)
-- **Login flow**: call user-service `VerifyCredentials(email, password)` → get user_id + email + roles → `GenerateAccessToken(user_id, email, roles)` → store refresh token in Redis
+- **Login flow**: call user-service `VerifyCredentials(emailOrUsername, password)` → get user_id + email + roles → `GenerateAccessToken(user_id, email, roles)` → store refresh token in Redis
 - **Logout**: deletes the refresh token from Redis using `refresh_token` field in request (not access token)
 - **RefreshToken**: validate JWT → check Redis → call user-service `GetUser(user_id)` for fresh email+roles → new access token
 - **ChangePassword**: delegates directly to user-service `ChangePassword` RPC
@@ -339,11 +339,12 @@ Manager → UpdateOrderStatus(Completed) when customer pays (manual)
 
 **Authorization model (api-gateway `order_handler.go`):**
 - `CreateOrder`: optional auth — extracts `user_id` from token if present, no auth required
-- `GetOrder`, `UpdateOrder`, `DeleteOrder`, `CancelOrder`, `AddOrderItem`, `RemoveOrderItem`: pre-fetches order; if `order.user_id != ""`, caller must be authenticated as owner OR have staff role
-- `ListOrders`: if `user_id` query param present, caller must be that user or staff; no filter = open
+- `GetOrder`: pre-fetches order; if `order.user_id != ""` → owner or staff; walk-in orders (user_id="") = public read
+- `UpdateOrder`, `DeleteOrder`, `CancelOrder`, `AddOrderItem`, `RemoveOrderItem`: uses `checkOrderWriteAccess` — walk-in orders require staff; owned orders require owner or staff
+- `ListOrders`: no filter → staff-only (prevents full data leak); with `user_id` filter → caller must be that user or staff
 - `UpdateOrderStatus`: staff-only (ADMIN/MANAGER/CHEF/WAITER)
 - `UpdateOrderItemStatus`: role-gated by target status — `COOKING`/`READY` → CHEF+ADMIN+MANAGER; `SERVED` → WAITER+ADMIN+MANAGER
-- Shared helpers: `verifyCaller(r)` (optional token extract), `checkOrderAccess(r, orderUserID)` (combined auth+authz), `checkUserIDAccess(r, targetUserID)` (for list filter), `canMarkItemStatus(roles, targetStatus)`
+- Helpers: `verifyCaller(r)` (optional token), `checkOrderAccess(r, orderUserID)` (read access), `checkOrderWriteAccess(r, orderUserID)` (write access — walk-in requires staff), `checkUserIDAccess(r, targetUserID)`, `canMarkItemStatus(roles, targetStatus)`
 
 ---
 
@@ -362,11 +363,13 @@ Pub/Sub message bus for kitchen staff. **No DB** — pure Redis Pub/Sub.
 |------|---------|--------|---------|
 | `ORDER_CONFIRMED` | `UpdateOrderStatus → Confirmed` | `CHEF` | order_id, table_id, customer_name, party_size, notes, items[] |
 | `ITEM_READY` | `UpdateOrderItemStatus → READY` | `WAITER` | order_id, table_id, item_id, item_name |
+| `ORDER_CREATED` | `CreateOrder` | `ADMIN`, `MANAGER` | order_id, table_id, customer_name, party_size, notes, message |
+| `ORDER_STATUS_CHANGED` | `UpdateOrderStatus` (any transition) | `ADMIN`, `MANAGER` | order_id, table_id, customer_name, party_size, message |
 
 #### Notification entity fields:
 `id`, `type`, `target_role`, `order_id`, `table_id`, `item_id`, `item_name`, `created_at` (Unix), `message`, `customer_name`, `party_size`, `notes`, `items[]`
 
-**Redis channels:** `notifications:CHEF`, `notifications:WAITER`
+**Redis channels:** `notifications:CHEF`, `notifications:WAITER`, `notifications:ADMIN`, `notifications:MANAGER`
 
 **Notification flow** (fire-and-forget, does not block order operations):
 ```
@@ -436,7 +439,11 @@ Default role on user creation: `USER`
 
 **DB table:** `users`
 
-**Env:** `SERVER_PORT=50056`, `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_SSLMODE`
+**Env:** `SERVER_PORT=50056`, `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_SSLMODE`, `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`, `SEED_ADMIN_USERNAME`, `SEED_ADMIN_FULLNAME`
+
+**Seed admin:** `cmd/server/main.go` calls `seedAdmin()` on startup — if `SEED_ADMIN_EMAIL`/`SEED_ADMIN_PASSWORD` are set and email not yet in DB, creates an ADMIN account. Idempotent. Default in docker-compose: `admin@restaurant.com` / `123456`.
+
+**`VerifyCredentials`** accepts email OR username — tries email first, falls back to `GetByUsername` if not found.
 
 DB schema: `users` table (no roles column) + `user_roles` junction table. All Create/Update use `sql.Tx` transactions.
 
@@ -586,27 +593,51 @@ src/
 ```
 src/
   store/          # adminAuthStore.ts
+  hooks/          # useAdminNotifications.ts — WebSocket hook for admin real-time notifications
   components/     # Footer, HeaderDashboard (year/month picker), KPIGrid, PerformanceTable, Sidebar
   pages/
     Login.tsx            # wired to authApi; validates staff role before granting access
     AnalyticsOverview.tsx  # real month filtering, trend vs prev month, status breakdown
     MenuManagement.tsx     # CRUD with category dropdown from API
-    OrdersManagement.tsx   # full order mgmt: status update, notes, end_time, table name, item_status
+    OrdersManagement.tsx   # full order mgmt: 5 view modes, walk-in creation, MenuBrowser, notifications
     MonthlyScheduler.tsx   # monthly shift calendar grid; create + edit + delete shifts
-    TableManagement.tsx    # CRUD bàn: create/edit/delete + status update (AVAILABLE/CLEANING/OUT_OF_SERVICE)
+    TableManagement.tsx    # CRUD tables: create/edit/delete + status update
     UserManagement.tsx     # CRUD user + role assignment + change password
   services/       # api.ts — token refresh interceptor + all endpoints
 ```
 
 **`services/api.ts` key exports:**
-- `ordersApi`: `list`, `update` (notes+end_time), `updateStatus`, `updateItemStatus`, `cancel`, `delete`
+- `ordersApi`: `list` (supports `sort_order?: 'asc'|'desc'`), `create` (supports `walk_in?: boolean`), `update` (notes+end_time), `updateStatus`, `updateItemStatus`, `cancel`, `delete`
 - `tablesApi`: `list`, `create`, `update`, `delete`, `updateStatus`
 - `menuApi`: `listItems`, `createItem`, `updateItem`, `deleteItem`, `listCategories`, `createCategory`, `updateCategory`, `deleteCategory`
 - `usersApi`: `getOne`, `listAll`, `create`, `update`, `delete`, `assignRole`, `changePassword`
 - `scheduleApi`: `list`, `create`, `update`, `delete`
 - `authApi`: `login`, `logout`, `changePassword`
+- `createNotificationWS(token, role)` — creates WebSocket to `/ws/notifications`
 - Token refresh: 401 → `POST /auth/refresh` → retry; `clearAuth()` on second 401
 - `TableDto`: `table_id, table_number, capacity, status`
+
+**Real-time notifications (ADMIN/MANAGER only):**
+- `hooks/useAdminNotifications.ts` — connects WebSocket with `role=ADMIN` or `role=MANAGER`
+- Tracks `notifications[]` (max 50), `unreadCount`, `connected`
+- `App.tsx` consumes hook, increments `ordersRefreshSignal` when new notifications arrive (auto-refreshes order list)
+- Bell icon in `Sidebar.tsx` with red unread badge; notification panel in `App.tsx` (fixed overlay)
+- `bellRef` passed to Sidebar to prevent outside-click toggle bug
+
+**OrdersManagement.tsx — view modes:**
+| Mode | Filter logic |
+|------|-------------|
+| Upcoming | Today's orders where `time > now` — for shift coordination |
+| Today | All of today's orders (includes past) |
+| This Week | `date >= weekStart && date <= weekEnd` (Mon–Sun) |
+| This Month | `date.startsWith(YYYY-MM)` |
+| All | All orders, sorted DESC |
+
+- Loads 500 orders with `sort_order: 'asc'`; time-oriented views use ASC; All view re-sorts DESC in useMemo
+- View tabs show count badge per mode
+- **Walk-in order creation**: "+ Walk-in Order" button → modal (name, phone, party_size, table selector, status, date/time, notes, items). Sends `walk_in: true` so api-gateway omits `user_id`
+- **MenuBrowser component**: standalone `React.FC` — category pill filters + search + 2-column scrollable grid (`max-h-56`). `+Add` button for qty=0 items; `−/qty/+` controls for qty>0. Used in both walk-in modal and edit-items modal.
+- **Category filter**: filters by `m.category` (name string from proto) — NOT `category_id` (which is not in `MenuItem` proto)
 
 ---
 
@@ -755,14 +786,94 @@ All frontend text translated to **English**. No Vietnamese strings remain in any
 - **`scripts/Makefile`** updated — removed `staff-service`, added all 8 active services with individual `build-*` and `restart-*` targets.
 - **`scripts/README.md`** updated — rewrote to reflect actual proto layout and Makefile-based workflow.
 
+### Staff account flow + bootstrapping (2026-06-12)
+
+Staff (ADMIN/MANAGER/CHEF/WAITER) **do not self-register**. Accounts are created by admins via User Management in the admin dashboard. The first ADMIN is seeded automatically by user-service on startup.
+
+**Login supports username:** `VerifyCredentials` in user-service tries email first, falls back to username lookup. Admin login UI uses `type="text"` with label "Email / Username".
+
+### Infrastructure fixes (2026-06-12)
+
+- **postgres healthcheck** added in docker-compose: `pg_isready -U restaurant_user -d restaurant_db`, interval 5s, retries 10
+- **`condition: service_healthy`** on all DB-dependent services (menu, schedule, table, order, user) — prevents FATAL crash on cold start when postgres isn't ready yet
+
+### Auth error message fix (2026-06-12)
+
+**Problem:** gRPC business errors (e.g. "email already exists") were exposed as raw gRPC strings: `"rpc error: code = AlreadyExists desc = ..."`.
+
+**Fix 1 — api-gateway `auth_handler.go`:** Added `authBizError(w, resp.GetSuccess(), resp.GetMessage())` check after every gRPC call (6 handlers). Returns HTTP 400 with `{success: false, message: "..."}` when backend signals failure. Fixes the proto `omitempty` bug where `success: false` was dropped from JSON (causing frontend to always show success).
+
+**Fix 2 — auth-service `auth_handler.go`:** Added `grpcDesc(err)` helper — walks `errors.Unwrap` chain to find the gRPC status and returns only `s.Message()`, stripping the `"rpc error: code = X desc = "` prefix.
+
+### Customer app UI fixes (2026-06-12)
+
+- **Toast component** `src/components/ui/Toast.tsx` — fixed top-right, auto-dismiss 4s, X button. Used in `ReservationPage` for booking errors (replaced inline `<p>` below submit button).
+- **Eye icon removed** from login password field in `LoginPage.tsx` (customer) and `Login.tsx` (admin).
+
+### Auth/authorization rollout (2026-06-12)
+
+**api-gateway auth helpers** (`internal/handler/auth_handler.go`):
+- `verifyBearerToken` — extract + verify JWT, return claims or write 401
+- `requireAdminOrManager` — token + ADMIN/MANAGER role
+- `requireStaff` — token + any staff role (ADMIN/MANAGER/CHEF/WAITER)
+- `requireAdmin` — token + ADMIN only
+
+**Menu write endpoints** (POST/PUT/DELETE items + categories) → `requireAdminOrManager`
+
+**Table write endpoints** (POST/PUT/DELETE) → `requireAdminOrManager`; `PATCH /tables/{id}/status` → `requireStaff`
+
+**User endpoints** (fully secured):
+- `GET /users/by-email`, `PATCH /users/{id}/password` → `verifyBearerToken`
+- `GET /users`, `POST /users`, `PUT /users/{id}`, `GET /users/{id}/roles` → `requireAdminOrManager`
+- `DELETE /users/{id}`, `PATCH /users/{id}/roles` → `requireAdmin`
+- `GET /users/{id}` → public (admin login bootstrap)
+
+**Order auth fixes:**
+- `GET /orders` (no filter) — was fully public (data leak); now requires staff role
+- Walk-in orders (`user_id=""`) write operations — were unprotected; new `checkOrderWriteAccess` helper requires staff for walk-in order mutations
+
+**Admin dashboard Sidebar + App.tsx (2026-06-12):**
+- `Sidebar.tsx`: tabs filtered by role — Dashboard/Menu/Tables → ADMIN+MANAGER; Orders/Staff → all staff; Users → ADMIN only
+- `App.tsx`: default tab computed from roles — ADMIN/MANAGER → Dashboard; CHEF/WAITER → Orders
+
+### Admin notifications + order improvements (2026-06-12)
+
+**Admin real-time notifications:**
+- `services/order-service/internal/usecase/order_usecase.go`: Added `notifyAdmin()` method — fires to both `ADMIN` and `MANAGER` Redis channels in background goroutines
+  - Called in `CreateOrder` → `ORDER_CREATED`
+  - Called in `UpdateOrderStatus` (any transition) → `ORDER_STATUS_CHANGED`
+- `api-gateway`: `canSubscribeRole` already allowed `role=ADMIN` and `role=MANAGER` — no change needed
+- `restaurant-app-admin/src/hooks/useAdminNotifications.ts` (new): WebSocket hook connecting with `role=ADMIN` or `role=MANAGER`
+- `App.tsx`: consumes hook, `ordersRefreshSignal` state auto-increments on new notifications to trigger order list reload
+- `Sidebar.tsx`: bell button with unread badge and disconnect indicator; `bellRef` prevents outside-click toggle bug
+
+**sort_order parameter (full stack):**
+- `proto/order/order.proto`: added `string sort_order = 6` to `ListOrdersRequest`
+- `services/order-service/internal/repository/order_postgres.go`: dynamic `ORDER BY time ASC/DESC` — validated with `strings.EqualFold` (not interpolated directly)
+- `services/order-service/internal/usecase/order_usecase.go` + `delivery/grpc/order_handler.go`: pass `sort_order` through
+- `api-gateway/internal/handler/order_handler.go`: reads `sort_order` query param, passes to gRPC
+- `services/api.ts`: `ordersApi.list` accepts `sort_order?: 'asc' | 'desc'`
+
+**OrdersManagement.tsx — view modes + walk-in orders:**
+- 5 view tabs: Upcoming / Today / This Week / This Month / All — with per-tab count badges
+- Upcoming = today's orders where `time > now` (distinct from Today which includes past)
+- Loads 500 orders with `sort_order: 'asc'`; All view re-sorts DESC client-side in useMemo
+- Walk-in order creation: "+ Walk-in Order" button → modal → `ordersApi.create({ walk_in: true, ... })`
+- `MenuBrowser` standalone component: category pill filters (by `m.category` name) + search + 2-column scrollable grid
+
+**Category filter bug fix (2026-06-12):**
+- `MenuItem` proto only has `category` field (name string) — no `category_id` on `MenuItem` message
+- `MenuBrowser` was filtering by `m.category_id` (always undefined) → nothing matched
+- Fix: filter by `m.category` (name) and pill buttons use `cat.name` as key
+
 ### Known gaps / TODO
 
 **Backend:**
 - **report-service** not wired into docker-compose or api-gateway (7 RPCs implemented, 0 HTTP routes)
 - **`report-service/pkg/config/config.go`** has `UserServiceAddr` defaulting to wrong port (50052 instead of 50056)
-- **No auth middleware** on menu/table/user routes in api-gateway — only order and schedule endpoints have auth
 - **schedule-service** does not validate shift conflicts (same user, same day, overlapping time)
 - **Operating hours** (10:00–22:00) only enforced at frontend — no backend validation
+- **`GET /users/{id}`** is public (needed for admin login bootstrap — app calls getOne after login before setAuth). Minor exposure: anyone who knows a UUID can read a user's profile.
 
 **Frontend:**
 - **`table_id` in kitchen app** (KitchenPage/WaiterPage notification cards) still shows truncated UUID — needs `table_number` lookup from table-service (customer app MyOrdersPage already fixed this pattern)

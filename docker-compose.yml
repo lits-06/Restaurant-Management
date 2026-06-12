@@ -10,6 +10,11 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U restaurant_user -d restaurant_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   redis:
     image: redis:7-alpine
@@ -56,7 +61,8 @@ services:
     volumes:
       - ./services/menu-service:/app/menu-service
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
 
   schedule-service:
     image: alpine:3.18
@@ -76,7 +82,8 @@ services:
     volumes:
       - ./services/schedule-service/server:/app/server
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
 
   table-service:
     image: alpine:latest
@@ -96,7 +103,8 @@ services:
     volumes:
       - ./services/table-service:/app/table-service
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
 
   order-service:
     image: alpine:latest
@@ -120,10 +128,14 @@ services:
     volumes:
       - ./services/order-service:/app/order-service
     depends_on:
-      - postgres
-      - menu-service
-      - table-service
-      - notification-service
+      postgres:
+        condition: service_healthy
+      menu-service:
+        condition: service_started
+      table-service:
+        condition: service_started
+      notification-service:
+        condition: service_started
 
   notification-service:
     image: alpine:latest
@@ -154,12 +166,17 @@ services:
       - DB_PASSWORD=restaurant_pass
       - DB_NAME=restaurant_db
       - DB_SSLMODE=disable
+      - SEED_ADMIN_EMAIL=admin@restaurant.com
+      - SEED_ADMIN_PASSWORD=123456
+      - SEED_ADMIN_USERNAME=admin
+      - SEED_ADMIN_FULLNAME=System Admin
     ports:
       - "50056:50056"
     volumes:
       - ./services/user-service:/app/user-service
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
 
   api-gateway:
     image: alpine:latest
